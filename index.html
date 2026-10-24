@@ -103,7 +103,8 @@
   main {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
-    padding-block: 14px 28px;
+    /* Espaço inferior extra para o botão fixo do WhatsApp não cobrir o rodapé. */
+    padding-block: 14px 88px;
   }
   .conteudo { max-width: 1100px; margin: 0 auto; display: grid; gap: 14px; }
   .disputas { display: grid; gap: 14px; }
@@ -114,6 +115,9 @@
     padding: 12px 14px; display: grid; gap: 8px; font-size: 0.88rem;
   }
   .aviso p { margin: 0; }
+  .espera { font-size: 0.95rem; font-weight: 600; text-align: center; }
+  .contagem { font-size: 1.6rem; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+  .contagem:empty { display: none; }
 
   .nova-versao {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -237,10 +241,13 @@
   .carimbo { margin: -4px 0 0; font-size: 0.72rem; color: var(--muted); }
 
   .compartilhar {
-    justify-self: center; display: inline-flex; align-items: center; gap: 8px;
+    /* Fixo no rodapé da tela para o compartilhamento ficar sempre à mão, mesmo rolando os painéis. */
+    position: fixed; z-index: 20; left: 50%; transform: translateX(-50%);
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; max-width: calc(100vw - 32px);
     padding: 11px 20px; border-radius: 999px; background: var(--whatsapp); color: var(--sobre-whatsapp);
     font: 600 0.95rem var(--font-body); text-decoration: none;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
   }
   .compartilhar:hover { background: var(--whatsapp-hover); }
   .compartilhar:focus-visible { outline: 2px solid var(--azul); outline-offset: 3px; }
@@ -275,7 +282,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.2.0</span>
+      <span class="versao" id="versao">v1.3.0</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
     <div class="relogio" id="relogio" title="Próxima consulta ao TSE">
@@ -292,6 +299,11 @@
     <section class="nova-versao" id="nova-versao" role="status" aria-label="Nova versão disponível" hidden>
       <p>Saiu uma versão nova desta página.</p>
       <button type="button" class="botao-atualizar" id="btn-atualizar">Atualizar</button>
+    </section>
+
+    <section class="aviso espera" id="espera" role="status">
+      <p id="espera-texto">O aplicativo funcionará apenas quando começar a apuração, às 17h (horário de Brasília) de domingo, 25/10. Até lá, os números ficam zerados.</p>
+      <p class="contagem" id="contagem" aria-live="off"></p>
     </section>
 
     <section class="aviso" id="aviso" hidden>
@@ -383,6 +395,13 @@
   const TIMEOUT_MS = 8000;
   const FALHAS_PARA_AVISO = 2;
   const ROTULOS_ELEITORADO = { brancos: "Brancos", nulos: "Nulos", abstencao: "Abstenção" };
+  // Antes deste horário o TSE ainda não publica os arquivos, então falha de leitura não é problema de conexão.
+  const INICIO_APURACAO = Date.parse("2026-10-25T17:00:00-03:00");
+  const MS_POR_SEGUNDO = 1000;
+  const SEGUNDOS_POR_MINUTO = 60;
+  const SEGUNDOS_POR_HORA = 3600;
+  const TEXTO_ESPERA_APOS_INICIO = "A apuração começou às 17h (horário de Brasília). "
+    + "Os números aparecem assim que o TSE divulgar as primeiras urnas apuradas.";
 
   // Partidos com cor fixa; quem não estiver aqui recebe a cor do slot (azul à esquerda, vermelho à direita).
   const COR_POR_PARTIDO = { "13": "vermelho", "22": "azul", "11": "azul" };
@@ -423,6 +442,7 @@
   const estado = {
     falhasSeguidas: 0,
     timer: null,
+    timerContagem: null,
     rodada: 0,
     paineis: new Map()
   };
@@ -432,7 +452,10 @@
     status: document.getElementById("status"),
     relogio: document.getElementById("relogio"),
     aviso: document.getElementById("aviso"),
-    avisoTexto: document.getElementById("aviso-texto")
+    avisoTexto: document.getElementById("aviso-texto"),
+    espera: document.getElementById("espera"),
+    esperaTexto: document.getElementById("espera-texto"),
+    contagem: document.getElementById("contagem")
   };
 
   /** Converte números no formato do TSE ("47,03", "158745502") para Number; valor ausente ou inválido vira 0. */
@@ -659,6 +682,33 @@
     el.aviso.hidden = false;
   }
 
+  /** Mantém a faixa de espera visível enquanto nenhuma urna tiver sido apurada. */
+  function atualizarEspera(algumaComUrnas) {
+    el.espera.hidden = algumaComUrnas;
+    if (!algumaComUrnas && Date.now() >= INICIO_APURACAO) {
+      el.esperaTexto.textContent = TEXTO_ESPERA_APOS_INICIO;
+    }
+  }
+
+  function doisDigitos(numero) {
+    return String(numero).padStart(2, "0");
+  }
+
+  /** Mostra o tempo que falta até o início da apuração; some quando o horário chega. */
+  function atualizarContagem() {
+    const restanteMs = INICIO_APURACAO - Date.now();
+    if (restanteMs <= 0) {
+      el.contagem.textContent = "";
+      clearInterval(estado.timerContagem);
+      return;
+    }
+    const totalSegundos = Math.ceil(restanteMs / MS_POR_SEGUNDO);
+    const horas = Math.floor(totalSegundos / SEGUNDOS_POR_HORA);
+    const minutos = Math.floor((totalSegundos % SEGUNDOS_POR_HORA) / SEGUNDOS_POR_MINUTO);
+    const segundos = totalSegundos % SEGUNDOS_POR_MINUTO;
+    el.contagem.textContent = `Faltam ${horas}h ${doisDigitos(minutos)}min ${doisDigitos(segundos)}s`;
+  }
+
   function reiniciarRelogio() {
     el.relogio.classList.remove("girando");
     // A leitura de offsetWidth força reflow, para a animação da contagem recomeçar do zero a cada ciclo.
@@ -691,7 +741,12 @@
       }
     }
 
+    atualizarEspera(algumaComUrnas);
     if (sucessos === 0) {
+      if (Date.now() < INICIO_APURACAO) {
+        definirStatus("conectando", "Aguardando");
+        return;
+      }
       estado.falhasSeguidas += 1;
       definirStatus("falha", "Sem conexão");
       if (estado.falhasSeguidas >= FALHAS_PARA_AVISO) {
@@ -755,6 +810,9 @@
       estado.paineis.set(disputa.id, criarPainel(disputa));
     }
     zerarPaineis();
+    atualizarEspera(false);
+    atualizarContagem();
+    estado.timerContagem = setInterval(atualizarContagem, MS_POR_SEGUNDO);
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         manterTelaLigada();
