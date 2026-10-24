@@ -220,6 +220,17 @@
   .seg-abstencao { background: var(--abstencao); outline: 1px solid var(--line); outline-offset: -1px; }
   .carimbo { margin: -4px 0 0; font-size: 0.72rem; color: var(--muted); }
 
+  .compartilhar {
+    justify-self: center; display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 20px; border-radius: 999px; background: #1f8f4e; color: #fff;
+    font: 600 0.95rem var(--font-body); text-decoration: none;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
+  }
+  .compartilhar:hover { background: #18733f; }
+  .compartilhar:focus-visible { outline: 2px solid var(--azul); outline-offset: 3px; }
+  .compartilhar svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .compartilhar svg path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+  .compartilhar svg .compartilhar-fone { fill: currentColor; stroke: none; }
   .rodape { font-size: 0.75rem; color: var(--muted); display: grid; gap: 4px; }
   .rodape p { margin: 0; }
 
@@ -263,6 +274,11 @@
     </section>
 
     <div class="disputas" id="disputas"></div>
+
+    <a class="compartilhar" href="https://wa.me/?text=Acompanhe%20ao%20vivo%20a%20apura%C3%A7%C3%A3o%20do%202%C2%BA%20turno%20%28Presidente%20e%20Governador%20do%20DF%29%3A%20https%3A%2F%2Flecoibr.github.io%2Fapuracao-tse-2026%2F" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.6-1.2A9 9 0 1 0 12 3Z"></path><path class="compartilhar-fone" d="M9 8.2c.2-.4.5-.4.8-.4h.4c.2 0 .4.1.5.4l.7 1.6c.1.2 0 .5-.1.6l-.5.6c.6 1.2 1.6 2.2 2.8 2.8l.6-.5c.2-.2.4-.2.6-.1l1.6.7c.3.1.4.3.4.5v.4c0 .3 0 .6-.4.8-.5.3-1.2.5-1.9.3-2.6-.7-4.6-2.7-5.3-5.3-.2-.7 0-1.4.3-1.9Z"></path></svg>
+      Compartilhar no WhatsApp
+    </a>
 
     <footer class="rodape">
       <p>A votação termina às 17h (horário de Brasília); a divulgação começa logo depois.</p>
