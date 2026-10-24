@@ -64,6 +64,7 @@
     line-height: 1; margin: 0; letter-spacing: 0.01em; text-wrap: balance;
   }
   .topo-sub { margin: 2px 0 0; color: var(--muted); font-size: 0.78rem; }
+  .online strong { color: var(--ok); font-weight: 600; font-variant-numeric: tabular-nums; }
   .topo-texto { flex: 1; min-width: 0; }
   .topo-autoria {
     margin: 0 0 3px; font-family: var(--font-display); font-weight: 500;
@@ -238,7 +239,7 @@
     <div class="topo-texto">
       <p class="topo-autoria">Produzido por <strong>E.R.A.</strong></p>
       <h1>Apuração 2º turno</h1>
-      <p class="topo-sub">Dom., 25/10/2026 · a cada 1 s</p>
+      <p class="topo-sub">Dom., 25/10/2026 · a cada 1 s<span class="online" id="online" hidden> · <strong id="online-qtd">1</strong> on-line</span></p>
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
@@ -724,6 +725,147 @@
   }
 
   iniciar();
+})();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js" integrity="sha384-u4uqeACkFcoKl57rBQJHVGDd1pqhW4w8X3WjTu1ZksPdxoLqdt34jpoNkJisE25W" crossorigin="anonymous"></script>
+<script>
+/**
+ * Contador de pessoas com a página aberta, por presença num broker MQTT público.
+ * Cada aparelho publica uma mensagem retida no próprio tópico e registra um "last will" vazio,
+ * que o broker publica sozinho quando a conexão cai: o registro some sem depender da página.
+ * Os registros são renovados periodicamente e os antigos são descartados, para não contar
+ * aparelhos órfãos caso o broker perca algum "last will".
+ */
+(() => {
+  "use strict";
+
+  const BROKER_URL = "wss://broker.hivemq.com:8884/mqtt";
+  const TOPICO_BASE = "era-apuracao-tse-2026/v1/online/";
+  const RENOVACAO_MS = 120000;
+  const VALIDADE_MS = 300000;
+  const VARREDURA_MS = 30000;
+  const LIMITE_REGISTROS = 100000;
+  const ID_VALIDO = /^[a-f0-9-]{16,64}$/;
+
+  const elOnline = document.getElementById("online");
+  const elQtd = document.getElementById("online-qtd");
+  if (!elOnline || !elQtd || typeof globalThis.mqtt?.connect !== "function") {
+    return;
+  }
+
+  const fmtQtd = new Intl.NumberFormat("pt-BR");
+  const meuId = gerarId();
+  const meuTopico = TOPICO_BASE + meuId;
+  // id do aparelho -> momento (relógio local) em que o registro foi visto válido pela última vez
+  const vistos = new Map();
+
+  function gerarId() {
+    if (typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function mensagemPresenca() {
+    return JSON.stringify({ t: Date.now() });
+  }
+
+  /** Lê o carimbo de tempo da mensagem; devolve null se o conteúdo não for o esperado. */
+  function lerMomento(payload) {
+    try {
+      const dados = JSON.parse(new TextDecoder().decode(payload));
+      return Number.isFinite(dados?.t) ? dados.t : null;
+    } catch (erro) {
+      console.debug("Mensagem de presença ignorada", erro);
+      return null;
+    }
+  }
+
+  function exibir() {
+    elQtd.textContent = fmtQtd.format(Math.max(1, vistos.size));
+  }
+
+  function descartarAntigos() {
+    const limite = Date.now() - VALIDADE_MS;
+    for (const [id, visto] of vistos) {
+      if (id !== meuId && visto < limite) {
+        vistos.delete(id);
+      }
+    }
+    exibir();
+  }
+
+  /**
+   * Mensagens retidas chegam na inscrição e podem ser antigas: a idade vem do carimbo do remetente.
+   * As demais acabaram de ser publicadas, então valem o horário local de chegada.
+   */
+  function registrar(topico, payload, retida) {
+    const id = topico.slice(TOPICO_BASE.length);
+    if (!ID_VALIDO.test(id)) {
+      return;
+    }
+    if (payload.length === 0) {
+      vistos.delete(id);
+      exibir();
+      return;
+    }
+    const momento = lerMomento(payload);
+    if (momento === null) {
+      return;
+    }
+    const agora = Date.now();
+    const idade = retida ? Math.max(0, agora - momento) : 0;
+    if (idade > VALIDADE_MS || (!vistos.has(id) && vistos.size >= LIMITE_REGISTROS)) {
+      return;
+    }
+    vistos.set(id, agora - idade);
+    exibir();
+  }
+
+  function publicarPresenca(cliente) {
+    if (cliente.connected) {
+      cliente.publish(meuTopico, mensagemPresenca(), { qos: 1, retain: true });
+    }
+  }
+
+  const cliente = globalThis.mqtt.connect(BROKER_URL, {
+    clientId: `era-${meuId.slice(0, 20)}`,
+    clean: true,
+    keepalive: 30,
+    reconnectPeriod: 5000,
+    connectTimeout: 10000,
+    will: { topic: meuTopico, payload: "", qos: 1, retain: true }
+  });
+
+  cliente.on("connect", () => {
+    // A cada (re)conexão o broker reenvia os registros retidos, então a lista recomeça do zero.
+    vistos.clear();
+    vistos.set(meuId, Date.now());
+    cliente.subscribe(`${TOPICO_BASE}+`, { qos: 0 });
+    publicarPresenca(cliente);
+    exibir();
+    elOnline.hidden = false;
+  });
+  cliente.on("message", (topico, payload, pacote) => registrar(topico, payload, pacote.retain));
+  cliente.on("offline", () => {
+    elOnline.hidden = true;
+  });
+  cliente.on("error", (erro) => console.warn("Contador de pessoas on-line indisponível", erro));
+
+  setInterval(() => publicarPresenca(cliente), RENOVACAO_MS);
+  setInterval(() => {
+    vistos.set(meuId, Date.now());
+    descartarAntigos();
+  }, VARREDURA_MS);
+
+  // Ao sair, apaga o próprio registro na hora; se não der tempo, o "last will" do broker faz isso.
+  globalThis.addEventListener("pagehide", () => {
+    if (cliente.connected) {
+      cliente.publish(meuTopico, "", { qos: 0, retain: true });
+    }
+  });
 })();
 </script>
 
