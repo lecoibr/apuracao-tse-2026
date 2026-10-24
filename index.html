@@ -289,7 +289,7 @@
 
 <main>
   <div class="conteudo">
-    <section class="nova-versao" id="nova-versao" hidden>
+    <section class="nova-versao" id="nova-versao" role="status" aria-label="Nova versão disponível" hidden>
       <p>Saiu uma versão nova desta página.</p>
       <button type="button" class="botao-atualizar" id="btn-atualizar">Atualizar</button>
     </section>
@@ -937,6 +937,8 @@
     return;
   }
   const versaoAtual = elVersao.textContent.trim();
+  // Versão já pedida num clique anterior: se o cache ainda devolveu a página antiga, não reavisa em laço.
+  const versaoJaPedida = new URLSearchParams(location.search).get("v");
   let versaoNova = null;
 
   function partes(versao) {
@@ -964,8 +966,9 @@
         return;
       }
       const dados = await resposta.json();
-      if (typeof dados?.versao === "string" && ehMaisNova(dados.versao, versaoAtual)) {
-        versaoNova = dados.versao;
+      const publicada = dados?.versao;
+      if (typeof publicada === "string" && publicada !== versaoJaPedida && ehMaisNova(publicada, versaoAtual)) {
+        versaoNova = publicada;
         elAviso.hidden = false;
       }
     } catch (erro) {
@@ -975,7 +978,7 @@
 
   btnAtualizar.addEventListener("click", () => {
     const destino = new URL(location.href);
-    destino.search = `?v=${encodeURIComponent(versaoNova || versaoAtual)}`;
+    destino.searchParams.set("v", versaoNova);
     location.replace(destino.toString());
   });
   document.addEventListener("visibilitychange", verificar);
