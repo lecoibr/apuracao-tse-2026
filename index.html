@@ -115,6 +115,19 @@
   }
   .aviso p { margin: 0; }
 
+  .nova-versao {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--surface); border: 1px solid var(--azul); border-radius: 10px;
+    padding: 10px 14px; font-size: 0.88rem;
+  }
+  .nova-versao[hidden] { display: none; }
+  .nova-versao p { margin: 0; }
+  .botao-atualizar {
+    flex-shrink: 0; font: 600 0.88rem var(--font-body); color: var(--surface);
+    background: var(--azul); border: 0; border-radius: 999px; padding: 8px 16px; cursor: pointer;
+  }
+  .botao-atualizar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
   .disputa {
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
     padding: 16px; display: grid; gap: 14px; min-width: 0;
@@ -262,7 +275,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao">v1.1.0</span>
+      <span class="versao" id="versao">v1.2.0</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
     <div class="relogio" id="relogio" title="Próxima consulta ao TSE">
@@ -276,6 +289,11 @@
 
 <main>
   <div class="conteudo">
+    <section class="nova-versao" id="nova-versao" hidden>
+      <p>Saiu uma versão nova desta página.</p>
+      <button type="button" class="botao-atualizar" id="btn-atualizar">Atualizar</button>
+    </section>
+
     <section class="aviso" id="aviso" hidden>
       <p id="aviso-texto"></p>
     </section>
@@ -896,6 +914,73 @@
       cliente.publish(meuTopico, "", { qos: 0, retain: true });
     }
   });
+})();
+</script>
+
+<script>
+/**
+ * Avisa quando há uma versão publicada mais nova que a aberta neste aparelho.
+ * A versão de referência fica em versao.json, publicado junto com a página;
+ * a recarga usa ?v=<versão> na URL para não receber a cópia antiga guardada em cache.
+ */
+(() => {
+  "use strict";
+
+  const URL_VERSAO = "versao.json";
+  const INTERVALO_VERIFICACAO_MS = 60000;
+  const FORMATO_VERSAO = /^v(\d{1,4})\.(\d{1,4})\.(\d{1,4})$/;
+
+  const elVersao = document.getElementById("versao");
+  const elAviso = document.getElementById("nova-versao");
+  const btnAtualizar = document.getElementById("btn-atualizar");
+  if (!elVersao || !elAviso || !btnAtualizar) {
+    return;
+  }
+  const versaoAtual = elVersao.textContent.trim();
+  let versaoNova = null;
+
+  function partes(versao) {
+    const casamento = FORMATO_VERSAO.exec(versao);
+    return casamento ? casamento.slice(1).map(Number) : null;
+  }
+
+  function ehMaisNova(candidata, atual) {
+    const a = partes(candidata);
+    const b = partes(atual);
+    if (!a || !b) {
+      return false;
+    }
+    const indice = a.findIndex((n, i) => n !== b[i]);
+    return indice !== -1 && a[indice] > b[indice];
+  }
+
+  async function verificar() {
+    if (document.hidden || versaoNova) {
+      return;
+    }
+    try {
+      const resposta = await fetch(`${URL_VERSAO}?t=${Date.now()}`, { cache: "no-store" });
+      if (!resposta.ok) {
+        return;
+      }
+      const dados = await resposta.json();
+      if (typeof dados?.versao === "string" && ehMaisNova(dados.versao, versaoAtual)) {
+        versaoNova = dados.versao;
+        elAviso.hidden = false;
+      }
+    } catch (erro) {
+      console.info("Não foi possível verificar se há versão nova", erro);
+    }
+  }
+
+  btnAtualizar.addEventListener("click", () => {
+    const destino = new URL(location.href);
+    destino.search = `?v=${encodeURIComponent(versaoNova || versaoAtual)}`;
+    location.replace(destino.toString());
+  });
+  document.addEventListener("visibilitychange", verificar);
+  setInterval(verificar, INTERVALO_VERIFICACAO_MS);
+  verificar();
 })();
 </script>
 
