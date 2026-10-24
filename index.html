@@ -64,6 +64,7 @@
     line-height: 1; margin: 0; letter-spacing: 0.01em; text-wrap: balance;
   }
   .topo-sub { margin: 2px 0 0; color: var(--muted); font-size: 0.78rem; }
+  .online { font-size: 0.68rem; color: var(--muted); white-space: nowrap; }
   .online strong { color: var(--ok); font-weight: 600; font-variant-numeric: tabular-nums; }
   .topo-texto { flex: 1; min-width: 0; }
   .topo-autoria {
@@ -239,11 +240,12 @@
     <div class="topo-texto">
       <p class="topo-autoria">Produzido por <strong>E.R.A.</strong></p>
       <h1>Apuração 2º turno</h1>
-      <p class="topo-sub">Dom., 25/10/2026 · a cada 1 s<span class="online" id="online" hidden> · <strong id="online-qtd">1</strong> on-line</span></p>
+      <p class="topo-sub">Dom., 25/10/2026 · a cada 1 s</p>
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
       <span class="versao">v1.1.0</span>
+      <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
     <div class="relogio" id="relogio" title="Próxima consulta ao TSE">
       <svg viewBox="0 0 36 36" aria-hidden="true">
