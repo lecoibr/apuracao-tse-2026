@@ -745,6 +745,7 @@
   const RENOVACAO_MS = 120000;
   const VALIDADE_MS = 300000;
   const VARREDURA_MS = 30000;
+  const TOLERANCIA_RELOGIO_MS = 600000;
   const LIMITE_REGISTROS = 100000;
   const ID_VALIDO = /^[a-f0-9-]{16,64}$/;
 
@@ -816,8 +817,12 @@
       return;
     }
     const agora = Date.now();
+    // Carimbo muito à frente do relógio local não é diferença de fuso: seria um registro que nunca expira.
+    if (momento > agora + TOLERANCIA_RELOGIO_MS) {
+      return;
+    }
     const idade = retida ? Math.max(0, agora - momento) : 0;
-    if (idade > VALIDADE_MS || (!vistos.has(id) && vistos.size >= LIMITE_REGISTROS)) {
+    if (idade > VALIDADE_MS ||(!vistos.has(id) && vistos.size >= LIMITE_REGISTROS)) {
       return;
     }
     vistos.set(id, agora - idade);
