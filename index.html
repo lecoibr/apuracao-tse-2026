@@ -1,6 +1,5 @@
 <!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
 <title>Apuração 2º Turno 2026</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -85,7 +84,6 @@
   .status[data-estado="ao-vivo"] { color: var(--ok); }
   .status[data-estado="ao-vivo"]::before { animation: pulso 1.2s ease-in-out infinite; }
   .status[data-estado="falha"] { color: var(--erro); }
-  .status[data-estado="simulacao"] { color: var(--ouro); }
   .status[data-estado="finalizada"] { color: var(--azul); }
   @keyframes pulso { 50% { opacity: 0.25; } }
 
@@ -112,13 +110,6 @@
   }
   .aviso p { margin: 0; }
   .aviso strong { font-weight: 600; }
-  .aviso-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
-  .botao {
-    font: 600 0.85rem var(--font-body); color: var(--ink); background: var(--surface);
-    border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer;
-  }
-  .botao:hover { border-color: var(--ink); }
-  .botao:focus-visible, a:focus-visible { outline: 2px solid var(--azul); outline-offset: 2px; }
 
   .disputa {
     background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
@@ -263,7 +254,7 @@
     <div class="topo-texto">
       <p class="topo-autoria">Produzido por <strong>E.R.A.</strong></p>
       <h1>Apuração 2º turno</h1>
-      <p class="topo-sub" id="topo-sub">Dom., 25/10/2026 · a cada 1 s</p>
+      <p class="topo-sub">Dom., 25/10/2026 · a cada 1 s</p>
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
@@ -282,10 +273,6 @@
   <div class="conteudo">
     <section class="aviso" id="aviso" hidden>
       <p id="aviso-texto"></p>
-      <div class="aviso-acoes">
-        <button type="button" class="botao" id="btn-simulacao">Ver simulação</button>
-        <button type="button" class="botao" id="btn-tentar">Tentar de novo</button>
-      </div>
     </section>
 
     <div class="disputas" id="disputas"></div>
@@ -374,11 +361,8 @@
   const INTERVALO_MS = 1000;
   const TIMEOUT_MS = 8000;
   const FALHAS_PARA_AVISO = 2;
-  const DURACAO_SIMULACAO_MS = 150000;
   const PREFIXO_HISTORICO = "apuracao2026-2t:";
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const SUBTITULO_AO_VIVO = "Dom., 25/10/2026 · a cada 1 s";
-  const SUBTITULO_SIMULACAO = "Números fictícios, não oficiais";
   const ROTULOS_ELEITORADO = { brancos: "Brancos", nulos: "Nulos", abstencao: "Abstenção" };
 
   // Partidos com cor fixa; quem não estiver aqui recebe a cor do slot (azul à esquerda, vermelho à direita).
@@ -395,13 +379,10 @@
       abrangencia: "Brasil",
       url: `${BASE_TSE}/6258/dados/br/br-c0001-e006258-u.json`,
       ordem: ["22", "13"],
-      simulacao: {
-        votosValidos: 120500000, inclinacaoInicial: 46.5, resultadoFinal: 50.9, secoes: 499248,
-        candidatos: [
-          { numero: "22", nome: "FLAVIO BOLSONARO", partido: "PL" },
-          { numero: "13", nome: "LULA", partido: "PT" }
-        ]
-      }
+      candidatosIniciais: [
+        { numero: "22", nome: "FLAVIO BOLSONARO", partido: "PL" },
+        { numero: "13", nome: "LULA", partido: "PT" }
+      ]
     },
     {
       id: "governador-df",
@@ -409,13 +390,10 @@
       abrangencia: "Distrito Federal",
       url: `${BASE_TSE}/6260/dados/df/df-c0003-e006260-u.json`,
       ordem: ["11", "13"],
-      simulacao: {
-        votosValidos: 1720000, inclinacaoInicial: 55.8, resultadoFinal: 53.4, secoes: 6969,
-        candidatos: [
-          { numero: "11", nome: "CELINA LEÃO", partido: "PP" },
-          { numero: "13", nome: "LEANDRO GRASS", partido: "PT" }
-        ]
-      }
+      candidatosIniciais: [
+        { numero: "11", nome: "CELINA LEÃO", partido: "PP" },
+        { numero: "13", nome: "LEANDRO GRASS", partido: "PT" }
+      ]
     }
   ];
 
@@ -424,9 +402,7 @@
   const fmtPctCurto = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   const estado = {
-    modo: "ao-vivo",
     falhasSeguidas: 0,
-    inicioSimulacao: 0,
     timer: null,
     rodada: 0,
     paineis: new Map(),
@@ -438,10 +414,7 @@
     status: document.getElementById("status"),
     relogio: document.getElementById("relogio"),
     aviso: document.getElementById("aviso"),
-    avisoTexto: document.getElementById("aviso-texto"),
-    btnSimulacao: document.getElementById("btn-simulacao"),
-    btnTentar: document.getElementById("btn-tentar"),
-    topoSub: document.getElementById("topo-sub")
+    avisoTexto: document.getElementById("aviso-texto")
   };
 
   /** Converte números no formato do TSE ("47,03", "158745502") para Number; valor ausente ou inválido vira 0. */
@@ -528,48 +501,6 @@
     }
   }
 
-  /** Gera um resultado fictício que avança no tempo, usado só quando o modo simulação é ativado. */
-  function gerarSimulacao(disputa) {
-    const cfg = disputa.simulacao;
-    const decorrido = Date.now() - estado.inicioSimulacao;
-    const progresso = Math.min(1, decorrido / DURACAO_SIMULACAO_MS);
-    const urnasPct = 100 * (1 - Math.pow(1 - progresso, 2.2));
-    const fracao = urnasPct / 100;
-    const ruido = Math.sin(decorrido / 3100) * 0.35 * (1 - fracao);
-    const pctA = cfg.inclinacaoInicial + (cfg.resultadoFinal - cfg.inclinacaoInicial) * Math.sqrt(fracao) + ruido;
-    const validos = Math.round(cfg.votosValidos * fracao);
-    const votosA = Math.round(validos * pctA / 100);
-    const candidatos = cfg.candidatos.map((c, i) => {
-      const votosCand = i === 0 ? votosA : validos - votosA;
-      return {
-        ...c,
-        votos: votosCand,
-        pct: validos > 0 ? (votosCand / validos) * 100 : 0,
-        eleito: progresso >= 1 && (i === 0 ? pctA > 50 : pctA < 50),
-        seq: i + 1
-      };
-    });
-    // Proporções fictícias: válidos = 95% do comparecimento, brancos 2%, nulos o restante; abstenção = 25% do comparecimento (20% do eleitorado).
-    const comparecimento = Math.round(validos / 0.95);
-    const brancos = Math.round(comparecimento * 0.02);
-    const abstencao = Math.round(comparecimento * 0.25);
-    const agora = new Date();
-    return {
-      candidatos,
-      votosValidos: validos,
-      urnasPct,
-      secoesTotalizadas: Math.round(cfg.secoes * fracao),
-      secoesTotal: cfg.secoes,
-      comparecimentoPct: validos > 0 ? (comparecimento / (comparecimento + abstencao)) * 100 : 0,
-      comparecimento,
-      abstencao,
-      brancos,
-      nulos: comparecimento - validos - brancos,
-      atualizadoEm: `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR")}`,
-      finalizada: progresso >= 1
-    };
-  }
-
   function lerHistorico(id) {
     try {
       const salvo = JSON.parse(localStorage.getItem(PREFIXO_HISTORICO + id) || "[]");
@@ -601,9 +532,7 @@
     }
     pontos.push({ u: resultado.urnasPct, a: candA.pct });
     estado.historicos.set(id, pontos);
-    if (estado.modo === "ao-vivo") {
-      salvarHistorico(id, pontos);
-    }
+    salvarHistorico(id, pontos);
     return pontos;
   }
 
@@ -820,13 +749,9 @@
     renderizarGrafico(painel, resultado, pontos);
     renderizarEleitorado(painel, resultado);
     const situacao = resultado.finalizada ? " · totalização concluída" : "";
-    if (estado.modo === "simulacao") {
-      painel.atualizado.textContent = `Simulação atualizada em ${resultado.atualizadoEm}${situacao}`;
-    } else {
-      painel.atualizado.textContent = resultado.atualizadoEm
-        ? `Dados gerados pelo TSE em ${resultado.atualizadoEm}${situacao}`
-        : "Horário de geração não informado pelo TSE.";
-    }
+    painel.atualizado.textContent = resultado.atualizadoEm
+      ? `Dados gerados pelo TSE em ${resultado.atualizadoEm}${situacao}`
+      : "Horário de geração não informado pelo TSE.";
   }
 
   function definirStatus(codigo, texto) {
@@ -848,7 +773,7 @@
 
   async function atualizarAoVivo(rodada) {
     const respostas = await Promise.allSettled(DISPUTAS.map((d) => buscarJson(d.url)));
-    if (rodada !== estado.rodada || estado.modo !== "ao-vivo") {
+    if (rodada !== estado.rodada) {
       return;
     }
     let sucessos = 0;
@@ -875,10 +800,8 @@
       estado.falhasSeguidas += 1;
       definirStatus("falha", "Sem conexão");
       if (estado.falhasSeguidas >= FALHAS_PARA_AVISO) {
-        mostrarAviso("Não foi possível ler os arquivos do TSE nesta página. "
-          + "Se ela estiver aberta dentro do claude.ai, o próprio ambiente bloqueia acesso a sites externos: "
-          + "abra a versão publicada fora dele para ver os dados ao vivo. "
-          + "Fora isso, o servidor do TSE pode estar instável; a página continua tentando a cada 1 segundo.");
+        mostrarAviso("Não foi possível ler os arquivos do TSE. Verifique a conexão com a internet; "
+          + "o servidor do TSE também pode estar instável. A página continua tentando a cada 1 segundo.");
       }
       return;
     }
@@ -893,22 +816,12 @@
     }
   }
 
-  function atualizarSimulacao() {
-    for (const disputa of DISPUTAS) {
-      renderizarDisputa(disputa, gerarSimulacao(disputa));
-    }
-  }
-
   async function ciclo() {
     clearTimeout(estado.timer);
     // Cada chamada invalida as anteriores, evitando dois laços de consulta em paralelo
-    // quando o usuário troca de modo ou volta para a aba no meio de uma requisição.
+    // quando o usuário volta para a aba no meio de uma requisição.
     const rodada = ++estado.rodada;
-    if (estado.modo === "simulacao") {
-      atualizarSimulacao();
-    } else {
-      await atualizarAoVivo(rodada);
-    }
+    await atualizarAoVivo(rodada);
     if (rodada === estado.rodada && !document.hidden) {
       reiniciarRelogio();
       estado.timer = setTimeout(ciclo, INTERVALO_MS);
@@ -917,14 +830,14 @@
 
   function carregarHistoricos() {
     for (const disputa of DISPUTAS) {
-      estado.historicos.set(disputa.id, estado.modo === "ao-vivo" ? lerHistorico(disputa.id) : []);
+      estado.historicos.set(disputa.id, lerHistorico(disputa.id));
     }
   }
 
-  /** Resultado zerado, usado para limpar a tela ao trocar de modo e nunca deixar número simulado à mostra. */
+  /** Resultado zerado, exibido até a primeira resposta do TSE chegar. */
   function resultadoVazio(disputa) {
     return {
-      candidatos: disputa.simulacao.candidatos.map((c, i) => ({ ...c, votos: 0, pct: 0, eleito: false, seq: i + 1 })),
+      candidatos: disputa.candidatosIniciais.map((c, i) => ({ ...c, votos: 0, pct: 0, eleito: false, seq: i + 1 })),
       votosValidos: 0, urnasPct: 0, secoesTotalizadas: 0, secoesTotal: 0,
       comparecimentoPct: 0, comparecimento: 0, abstencao: 0, brancos: 0, nulos: 0,
       atualizadoEm: "", finalizada: false
@@ -936,31 +849,6 @@
       renderizarDisputa(disputa, resultadoVazio(disputa));
       estado.paineis.get(disputa.id).atualizado.textContent = "Sem dados ainda.";
     }
-  }
-
-  function entrarSimulacao() {
-    estado.modo = "simulacao";
-    estado.inicioSimulacao = Date.now();
-    carregarHistoricos();
-    definirStatus("simulacao", "Simulação");
-    el.topoSub.textContent = SUBTITULO_SIMULACAO;
-    mostrarAviso("Você está vendo uma simulação com números fictícios, só para demonstrar a tela. Nada aqui é resultado oficial.");
-    el.btnSimulacao.textContent = "Voltar aos dados do TSE";
-    el.btnTentar.hidden = true;
-    ciclo();
-  }
-
-  function voltarAoVivo() {
-    estado.modo = "ao-vivo";
-    estado.falhasSeguidas = 0;
-    carregarHistoricos();
-    zerarPaineis();
-    el.aviso.hidden = true;
-    el.btnTentar.hidden = false;
-    el.btnSimulacao.textContent = "Ver simulação";
-    el.topoSub.textContent = SUBTITULO_AO_VIVO;
-    definirStatus("conectando", "Conectando");
-    ciclo();
   }
 
   async function manterTelaLigada() {
@@ -979,8 +867,6 @@
     }
     carregarHistoricos();
     zerarPaineis();
-    el.btnSimulacao.addEventListener("click", () => (estado.modo === "simulacao" ? voltarAoVivo() : entrarSimulacao()));
-    el.btnTentar.addEventListener("click", () => ciclo());
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         manterTelaLigada();
