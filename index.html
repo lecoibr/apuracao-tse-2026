@@ -279,7 +279,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.8</span>
+      <span class="versao" id="versao">v1.6.9</span>
     </div>
   </div>
 </header>
@@ -672,9 +672,9 @@
       trilho.append(barra);
       item.append(nome, trilho, pct);
       lista.append(item);
-      return { regiao, barra, pct };
+      return { regiao, item, barra, pct };
     });
-    return { figura, linhas };
+    return { figura, lista, linhas };
   }
 
   /** Percentual de seções apuradas da região, ou null enquanto faltar a leitura de algum estado dela. */
@@ -697,10 +697,28 @@
       return;
     }
     painel.regioes.figura.hidden = false;
-    for (const linha of painel.regioes.linhas) {
-      const pct = percentualRegiao(linha.regiao);
+    const exibidas = painel.regioes.linhas.map((linha) => ({ linha, pct: percentualRegiao(linha.regiao) }));
+    for (const { linha, pct } of exibidas) {
       linha.pct.textContent = pct === null ? "—" : `${fmtPctCurto.format(limitarIncompleto(pct))}%`;
       linha.barra.style.width = `${pct === null ? 0 : Math.min(100, pct).toFixed(2)}%`;
+    }
+    ordenarRegioes(painel.regioes.lista, exibidas);
+  }
+
+  /**
+   * Menos apuradas em cima, mais apuradas embaixo. Região sem leitura ("—") vai para o fim, e o empate
+   * mantém a ordem de REGIOES. Só mexe no DOM quando a ordem muda.
+   */
+  function ordenarRegioes(lista, exibidas) {
+    const ordenadas = [...exibidas].sort((x, y) => {
+      if (x.pct === null || y.pct === null) {
+        return Number(x.pct === null) - Number(y.pct === null);
+      }
+      return x.pct - y.pct;
+    });
+    const mudou = ordenadas.some(({ linha }, indice) => lista.children[indice] !== linha.item);
+    if (mudou) {
+      lista.append(...ordenadas.map(({ linha }) => linha.item));
     }
   }
 
