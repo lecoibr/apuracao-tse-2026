@@ -276,7 +276,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.3.3</span>
+      <span class="versao" id="versao">v1.3.4</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -737,7 +737,7 @@
         return;
       }
       estado.falhasSeguidas += 1;
-      definirStatus("falha", "Falha leitura TSE");
+      definirStatus("falha", "Falha TSE");
       if (estado.falhasSeguidas >= FALHAS_PARA_AVISO) {
         mostrarAviso("Não foi possível ler os arquivos do TSE. Verifique a conexão com a internet; "
           + "o servidor do TSE também pode estar instável. A página continua tentando a cada 1 segundo.");
