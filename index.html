@@ -213,8 +213,8 @@
   }
   .novo svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 
-  .eleitorado { margin: 0; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
-  .eleitorado figcaption {
+  .eleitorado, .regioes { margin: 0; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .eleitorado figcaption, .regioes figcaption {
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
   }
   .legenda {
@@ -227,6 +227,14 @@
     font-family: var(--font-display); font-weight: 600; font-size: 1.1rem;
     line-height: 1.1; font-variant-numeric: tabular-nums;
   }
+  .regioes ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .regioes li {
+    display: grid; grid-template-columns: 6.2rem minmax(0, 1fr) 3.2rem; align-items: center; gap: 8px; font-size: 0.8rem;
+  }
+  .regiao-nome { color: var(--muted); }
+  .regiao-barra { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+  .regiao-barra span { display: block; height: 100%; width: 0; background: var(--ouro); transition: width 0.6s ease; }
+  .regiao-pct { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
   .carimbo { margin: -4px 0 0; font-size: 0.72rem; color: var(--muted); }
 
   .compartilhar {
@@ -256,7 +264,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .status::before { animation: none !important; }
-    .barra span, .anel-valor { transition: none; }
+    .barra span, .anel-valor, .regiao-barra span { transition: none; }
   }
 </style>
 </head>
@@ -271,7 +279,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.7</span>
+      <span class="versao" id="versao">v1.6.8</span>
     </div>
   </div>
 </header>
@@ -359,6 +367,10 @@
         <li><span class="leg-nome">Abstenção</span><strong data-leg="abstencao">—</strong></li>
       </ul>
     </figure>
+    <figure class="regioes" data-ref="regioes" hidden>
+      <figcaption>Urnas apuradas por região</figcaption>
+      <ul></ul>
+    </figure>
     <p class="carimbo" data-ref="atualizado">Sem dados ainda.</p>
   </article>
 </template>
@@ -379,15 +391,28 @@
   // Totalização concluída não muda mais na prática; basta conferir de vez em quando.
   const INTERVALO_FINALIZADA_MS = 30000;
   const TEXTO_AGUARDANDO = "Aguardando";
-  // Projeção: arquivos estaduais lidos com menos frequência, e só depois de uma parte relevante das urnas.
-  const INTERVALO_PROJECAO_MS = 60000;
+  // Leitura dos arquivos por estado (regiões e projeção), no ritmo em que o CDN do TSE renova esses arquivos.
+  const INTERVALO_ESTADOS_MS = 30000;
   const URNAS_MINIMAS_PROJECAO_PCT = 30;
+  // Rodadas por estado depois da totalização, para pegar os números finais mesmo com cópia velha no CDN.
+  const LEITURAS_ESTADOS_APOS_TOTALIZACAO = 3;
+  // Maior valor exibido por região enquanto falta alguma seção, para 99,96% não aparecer arredondado como 100,0%.
+  const PCT_MAXIMO_INCOMPLETO = 99.9;
   // Abaixo desta margem projetada (em pontos percentuais) a projeção não aponta vencedor.
   const MARGEM_MINIMA_PROJECAO_PP = 1;
-  const SITUACAO_PROJECAO = Object.freeze({ encerrada: "encerrada", semDados: "sem-dados", calculada: "calculada" });
+  const SITUACAO_ESTADOS = Object.freeze({ encerrada: "encerrada", semDados: "sem-dados", calculada: "calculada" });
   // Os 27 estados e o exterior ("zz"), como o TSE nomeia as pastas.
   const UFS = ["ac", "al", "ap", "am", "ba", "ce", "df", "es", "go", "ma", "mt", "ms", "mg", "pa",
     "pb", "pr", "pe", "pi", "rj", "rn", "rs", "ro", "rr", "sc", "sp", "se", "to", "zz"];
+  // Regiões do IBGE e o exterior, na ordem em que aparecem no painel de Presidente.
+  const REGIOES = [
+    { nome: "Norte", ufs: ["ac", "am", "ap", "pa", "ro", "rr", "to"] },
+    { nome: "Nordeste", ufs: ["al", "ba", "ce", "ma", "pb", "pe", "pi", "rn", "se"] },
+    { nome: "Centro-Oeste", ufs: ["df", "go", "ms", "mt"] },
+    { nome: "Sudeste", ufs: ["es", "mg", "rj", "sp"] },
+    { nome: "Sul", ufs: ["pr", "rs", "sc"] },
+    { nome: "Exterior", ufs: ["zz"] }
+  ];
   const TIMEOUT_MS = 8000;
   const FALHAS_PARA_AVISO = 2;
   // Antes deste horário o TSE ainda não publica os arquivos, então falha de leitura não é problema de conexão.
@@ -462,9 +487,10 @@
     taxasPrimeiroTurno: null,
     // Última leitura válida de cada estado, para uma falha isolada não travar a projeção.
     parciaisUf: new Map(),
-    ultimaProjecaoEm: 0,
-    timerProjecao: null,
-    rodadaProjecao: 0,
+    ultimaLeituraEstadosEm: 0,
+    timerEstados: null,
+    rodadaEstados: 0,
+    leiturasEstadosAposTotalizacao: 0,
     rodada: 0,
     paineis: new Map()
   };
@@ -628,8 +654,54 @@
       barra: ref("barra"), barraA: ref("barraA"), barraB: ref("barraB"),
       diferenca: ref("diferenca"), decidido: ref("decidido"), projecao: ref("projecao"),
       atualizado: ref("atualizado"), novo: ref("novo"), timerNovo: null,
+      // Só Presidente tem arquivo por estado para montar as regiões.
+      regioes: disputa.urlPorUf ? criarRegioes(ref("regioes")) : null,
       legendas: Object.fromEntries([...raiz.querySelectorAll("[data-leg]")].map((n) => [n.dataset.leg, n]))
     };
+  }
+
+  /** Monta uma linha por região (nome, barra e percentual); o bloco fica oculto até a primeira leitura. */
+  function criarRegioes(figura) {
+    const lista = figura.querySelector("ul");
+    const linhas = REGIOES.map((regiao) => {
+      const item = document.createElement("li");
+      const nome = Object.assign(document.createElement("span"), { className: "regiao-nome", textContent: regiao.nome });
+      const trilho = Object.assign(document.createElement("span"), { className: "regiao-barra" });
+      const barra = document.createElement("span");
+      const pct = Object.assign(document.createElement("strong"), { className: "regiao-pct", textContent: "—" });
+      trilho.append(barra);
+      item.append(nome, trilho, pct);
+      lista.append(item);
+      return { regiao, barra, pct };
+    });
+    return { figura, linhas };
+  }
+
+  /** Percentual de seções apuradas da região, ou null enquanto faltar a leitura de algum estado dela. */
+  function percentualRegiao(regiao) {
+    const leituras = regiao.ufs.map((uf) => estado.parciaisUf.get(uf));
+    if (!leituras.every(Boolean)) {
+      return null;
+    }
+    const total = leituras.reduce((soma, leitura) => soma + leitura.secoesTotal, 0);
+    const apuradas = leituras.reduce((soma, leitura) => soma + leitura.secoesTotalizadas, 0);
+    return total > 0 ? (apuradas / total) * 100 : null;
+  }
+
+  function limitarIncompleto(pct) {
+    return pct < 100 ? Math.min(pct, PCT_MAXIMO_INCOMPLETO) : pct;
+  }
+
+  function renderizarRegioes(painel) {
+    if (!painel.regioes) {
+      return;
+    }
+    painel.regioes.figura.hidden = false;
+    for (const linha of painel.regioes.linhas) {
+      const pct = percentualRegiao(linha.regiao);
+      linha.pct.textContent = pct === null ? "—" : `${fmtPctCurto.format(limitarIncompleto(pct))}%`;
+      linha.barra.style.width = `${pct === null ? 0 : Math.min(100, pct).toFixed(2)}%`;
+    }
   }
 
   /** Índice do candidato à frente (0 ou 1), ou -1 em empate ou sem os dois candidatos. */
@@ -777,7 +849,11 @@
     if (restantes === null) {
       throw new Error("Arquivo estadual do TSE sem eleitorado restante");
     }
-    return { ...lerVotosUf(json, ordem), restantes, uf, secoesTotalizadas: numeroTse((json.s || {}).st) };
+    const secoes = json.s || {};
+    return {
+      ...lerVotosUf(json, ordem), restantes, uf,
+      secoesTotalizadas: numeroTse(secoes.st), secoesTotal: numeroTse(secoes.ts)
+    };
   }
 
   /**
@@ -872,70 +948,91 @@
     });
   }
 
-  /**
-   * Situação devolvida: "encerrada" (nada mais a projetar), "sem-dados" (ainda poucas urnas,
-   * tentar de novo logo) ou "calculada" (rodada feita, próxima no intervalo normal).
-   */
-  async function atualizarProjecao(rodada) {
-    const disputa = DISPUTAS.find((d) => d.urlPorUf);
-    const atual = disputa ? estado.ultimoResultado.get(disputa.id) : null;
-    if (!disputa || atual?.finalizada) {
-      return SITUACAO_PROJECAO.encerrada;
-    }
-    // Leitura fora do formato de 2º turno pode ser passageira: tenta de novo em vez de desistir.
-    if (!atual || !atual.disputaDireta || atual.urnasPct < URNAS_MINIMAS_PROJECAO_PCT) {
-      return SITUACAO_PROJECAO.semDados;
-    }
-    const [respostas, taxasPrimeiroTurno] = await Promise.all([
-      Promise.allSettled(UFS.map((uf) => buscarJson(disputa.urlPorUf(uf)))),
-      carregarTaxasPrimeiroTurno(disputa)
-    ]);
-    if (rodada !== estado.rodadaProjecao) {
-      return SITUACAO_PROJECAO.calculada;
-    }
-    estado.ultimaProjecaoEm = Date.now();
-    guardarParciaisUf(respostas, disputa.ordem);
+  /** Todos os estados lidos e com todas as seções apuradas: não há mais o que atualizar por região. */
+  function todosEstadosCompletos() {
+    return estado.parciaisUf.size === UFS.length && [...estado.parciaisUf.values()]
+      .every((parcial) => parcial.secoesTotal > 0 && parcial.secoesTotalizadas >= parcial.secoesTotal);
+  }
+
+  /** Recalcula a projeção com a última leitura de cada estado. */
+  function atualizarProjecao(disputa, taxasPrimeiroTurno) {
     // Sem nenhuma leitura de algum estado a soma ficaria torta; espera a próxima rodada.
     if (estado.parciaisUf.size < UFS.length) {
       console.warn("Projeção aguardando a primeira leitura de todos os estados");
-      return SITUACAO_PROJECAO.calculada;
+      return;
     }
     const projecao = calcularProjecao(UFS.map((uf) => estado.parciaisUf.get(uf)), taxasPrimeiroTurno);
     if (projecao) {
       estado.projecoes.set(disputa.id, projecao);
       renderizarProjecao(estado.paineis.get(disputa.id), estado.ultimoResultado.get(disputa.id), projecao);
     }
-    return SITUACAO_PROJECAO.calculada;
   }
 
-  async function cicloProjecao() {
-    clearTimeout(estado.timerProjecao);
-    const rodada = ++estado.rodadaProjecao;
-    let situacao = SITUACAO_PROJECAO.calculada;
-    try {
-      situacao = await atualizarProjecao(rodada);
-    } catch (erro) {
-      // Projeção é complemento: qualquer falha nela não pode afetar a apuração.
-      console.warn("Projeção indisponível nesta rodada", erro);
+  /**
+   * Lê os arquivos por estado de Presidente para as regiões e, a partir de 30% das urnas, para a projeção.
+   * Situação devolvida: "encerrada" (nada mais a atualizar), "sem-dados" (nenhuma urna ainda,
+   * conferir de novo logo) ou "calculada" (rodada feita, próxima no intervalo normal).
+   */
+  async function atualizarEstados(rodada) {
+    const disputa = DISPUTAS.find((d) => d.urlPorUf);
+    const atual = disputa ? estado.ultimoResultado.get(disputa.id) : null;
+    const totalizacaoEncerrada = atual?.finalizada
+      && (todosEstadosCompletos() || estado.leiturasEstadosAposTotalizacao >= LEITURAS_ESTADOS_APOS_TOTALIZACAO);
+    if (!disputa || totalizacaoEncerrada) {
+      return SITUACAO_ESTADOS.encerrada;
     }
-    if (rodada !== estado.rodadaProjecao || document.hidden || situacao === SITUACAO_PROJECAO.encerrada) {
+    if (!atual || atual.urnasPct <= 0) {
+      return SITUACAO_ESTADOS.semDados;
+    }
+    // Leitura fora do formato de 2º turno pode ser passageira: só pula a projeção nesta rodada.
+    const projetar = !atual.finalizada && atual.disputaDireta && atual.urnasPct >= URNAS_MINIMAS_PROJECAO_PCT;
+    const [respostas, taxasPrimeiroTurno] = await Promise.all([
+      Promise.allSettled(UFS.map((uf) => buscarJson(disputa.urlPorUf(uf)))),
+      projetar ? carregarTaxasPrimeiroTurno(disputa) : null
+    ]);
+    if (rodada !== estado.rodadaEstados) {
+      return SITUACAO_ESTADOS.calculada;
+    }
+    estado.ultimaLeituraEstadosEm = Date.now();
+    if (atual.finalizada) {
+      estado.leiturasEstadosAposTotalizacao += 1;
+    }
+    guardarParciaisUf(respostas, disputa.ordem);
+    renderizarRegioes(estado.paineis.get(disputa.id));
+    if (projetar) {
+      atualizarProjecao(disputa, taxasPrimeiroTurno);
+    }
+    return SITUACAO_ESTADOS.calculada;
+  }
+
+  async function cicloEstados() {
+    clearTimeout(estado.timerEstados);
+    const rodada = ++estado.rodadaEstados;
+    let situacao = SITUACAO_ESTADOS.calculada;
+    try {
+      situacao = await atualizarEstados(rodada);
+    } catch (erro) {
+      // Regiões e projeção são complemento: qualquer falha nelas não pode afetar a apuração.
+      console.warn("Leitura por estado indisponível nesta rodada", erro);
+    }
+    if (rodada !== estado.rodadaEstados || document.hidden || situacao === SITUACAO_ESTADOS.encerrada) {
       return;
     }
-    // Sem dados ainda, confere de novo no ritmo da apuração; nada é baixado até haver urnas suficientes.
-    const espera = situacao === SITUACAO_PROJECAO.semDados ? INTERVALO_MS : INTERVALO_PROJECAO_MS;
-    clearTimeout(estado.timerProjecao);
-    estado.timerProjecao = setTimeout(cicloProjecao, espera);
+    // Sem urna apurada ainda, confere de novo no ritmo da apuração; nada é baixado antes disso.
+    const espera = situacao === SITUACAO_ESTADOS.semDados ? INTERVALO_MS : INTERVALO_ESTADOS_MS;
+    clearTimeout(estado.timerEstados);
+    estado.timerEstados = setTimeout(cicloEstados, espera);
   }
 
   /** Ao voltar para a aba, respeita o intervalo desde a última rodada em vez de baixar tudo de novo na hora. */
-  function retomarProjecao() {
-    const espera = estado.ultimaProjecaoEm + INTERVALO_PROJECAO_MS - Date.now();
+  function retomarEstados() {
+    const espera = estado.ultimaLeituraEstadosEm + INTERVALO_ESTADOS_MS - Date.now();
     if (espera <= 0) {
-      cicloProjecao();
+      cicloEstados();
       return;
     }
-    clearTimeout(estado.timerProjecao);
-    estado.timerProjecao = setTimeout(cicloProjecao, espera);
+    clearTimeout(estado.timerEstados);
+    estado.timerEstados = setTimeout(cicloEstados, espera);
   }
 
   /** Assinatura dos números exibidos, para saber se uma leitura trouxe algo diferente da anterior. */
@@ -1231,15 +1328,15 @@
       if (!document.hidden) {
         manterTelaLigada();
         ciclo();
-        retomarProjecao();
+        retomarEstados();
       } else {
         clearTimeout(estado.timer);
-        clearTimeout(estado.timerProjecao);
+        clearTimeout(estado.timerEstados);
       }
     });
     manterTelaLigada();
     ciclo();
-    cicloProjecao();
+    cicloEstados();
     // Sinal para o script de compatibilidade, no fim da página, de que a apuração iniciou neste navegador.
     document.documentElement.dataset.app = "pronto";
   }
