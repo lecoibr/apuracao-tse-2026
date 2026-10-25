@@ -268,7 +268,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.3</span>
+      <span class="versao" id="versao">v1.6.4</span>
     </div>
   </div>
 </header>
@@ -390,12 +390,15 @@
   const FALHAS_PARA_AVISO = 2;
   // Antes deste horário o TSE ainda não publica os arquivos, então falha de leitura não é problema de conexão.
   const INICIO_APURACAO = Date.parse("2026-10-25T17:00:00-03:00");
+  // Com a votação estendida, a divulgação ficou parada até este horário.
+  const RETOMADA_APURACAO = Date.parse("2026-10-25T19:00:00-03:00");
   const MS_POR_SEGUNDO = 1000;
   const SEGUNDOS_POR_MINUTO = 60;
   // Margem para o TSE começar a publicar depois das 17h sem a página acusar falha de internet.
   const MINUTOS_TOLERANCIA_INICIO = 15;
   const TOLERANCIA_INICIO_MS = MINUTOS_TOLERANCIA_INICIO * SEGUNDOS_POR_MINUTO * MS_POR_SEGUNDO;
   const SEGUNDOS_POR_HORA = 3600;
+  const TEXTO_PAUSA = "A apuração está parada até as 19h (horário de Brasília). Os números abaixo são parciais.";
   const TEXTO_ESPERA_APOS_INICIO = "A apuração começou às 17h (horário de Brasília). "
     + "Os números aparecem assim que o TSE divulgar as primeiras urnas apuradas.";
 
@@ -969,8 +972,18 @@
    * Mantém a faixa de espera visível enquanto nenhuma urna tiver sido apurada.
    * Depois que alguma leitura mostrou urnas, a faixa não volta, mesmo que uma disputa falhe numa leitura seguinte.
    */
+  function emPausa() {
+    const agora = Date.now();
+    return agora >= INICIO_APURACAO && agora < RETOMADA_APURACAO;
+  }
+
   function atualizarEspera(algumaComUrnas) {
     estado.urnasJaApuradas = estado.urnasJaApuradas || algumaComUrnas;
+    if (emPausa()) {
+      el.espera.hidden = false;
+      el.esperaTexto.textContent = TEXTO_PAUSA;
+      return;
+    }
     el.espera.hidden = estado.urnasJaApuradas;
     if (!estado.urnasJaApuradas && Date.now() >= INICIO_APURACAO) {
       el.esperaTexto.textContent = TEXTO_ESPERA_APOS_INICIO;
@@ -983,10 +996,12 @@
 
   /** Mostra o tempo que falta até o início da apuração; some quando o horário chega. */
   function atualizarContagem() {
-    const restanteMs = INICIO_APURACAO - Date.now();
+    const alvo = Date.now() < INICIO_APURACAO ? INICIO_APURACAO : RETOMADA_APURACAO;
+    const restanteMs = alvo - Date.now();
+    // Troca o texto do aviso na passagem das 17h e mantém o aviso de pausa até a retomada.
+    atualizarEspera(false);
     if (restanteMs <= 0) {
       el.contagem.textContent = "";
-      atualizarEspera(false);
       clearInterval(estado.timerContagem);
       return;
     }
@@ -994,7 +1009,8 @@
     const horas = Math.floor(totalSegundos / SEGUNDOS_POR_HORA);
     const minutos = Math.floor((totalSegundos % SEGUNDOS_POR_HORA) / SEGUNDOS_POR_MINUTO);
     const segundos = totalSegundos % SEGUNDOS_POR_MINUTO;
-    el.contagem.textContent = `Faltam ${horas}h ${doisDigitos(minutos)}min ${doisDigitos(segundos)}s`;
+    const prefixo = alvo === RETOMADA_APURACAO ? "A apuração retorna em" : "Faltam";
+    el.contagem.textContent = `${prefixo} ${horas}h ${doisDigitos(minutos)}min ${doisDigitos(segundos)}s`;
   }
 
   function marcarUltimaLeitura() {
@@ -1172,8 +1188,9 @@
     }
     zerarPaineis();
     atualizarEspera(false);
-    atualizarContagem();
+    // Cria o intervalo antes da primeira contagem, para ela poder pará-lo se o horário já passou.
     estado.timerContagem = setInterval(atualizarContagem, MS_POR_SEGUNDO);
+    atualizarContagem();
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden) {
         manterTelaLigada();
