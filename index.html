@@ -19,9 +19,6 @@
     --whatsapp-hover: #156638;
     --sobre-whatsapp: #fff;
     --aviso-bg: #fff4d6;
-    --branco-voto: #a9b4c2;
-    --nulo-voto: #6c7889;
-    --abstencao: #d9dfe7;
     --font-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
     --font-body: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -29,14 +26,14 @@
     :root:not([data-theme="light"]) {
       --bg: #0d131a; --surface: #151f2a; --ink: #e6ecf2; --muted: #93a0b0; --line: #273443;
       --azul: #6a9be6; --vermelho: #ee6f61; --ouro: #f0b429; --ok: #46c27c; --erro: #f2685b;
-      --aviso-bg: #3a2f10; --branco-voto: #8794a5; --nulo-voto: #5a6677; --abstencao: #2c3a4a;
+      --aviso-bg: #3a2f10;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0d131a; --surface: #151f2a; --ink: #e6ecf2; --muted: #93a0b0; --line: #273443;
     --azul: #6a9be6; --vermelho: #ee6f61; --ouro: #f0b429; --ok: #46c27c; --erro: #f2685b;
-    --aviso-bg: #3a2f10; --branco-voto: #8794a5; --nulo-voto: #5a6677; --abstencao: #2c3a4a;
+    --aviso-bg: #3a2f10;
     color-scheme: dark;
   }
 
@@ -208,34 +205,18 @@
 
   .eleitorado { margin: 0; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
   .eleitorado figcaption {
-    display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
     font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
   }
-  .eleitorado figcaption span { letter-spacing: 0.02em; text-transform: none; font-weight: 500; }
-  .pilha { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--abstencao); }
-  .pilha span { display: block; height: 100%; width: 0; transition: width 0.6s ease; }
-  .pilha span + span { box-shadow: inset 1px 0 0 var(--surface); }
-  /* Seis colunas: candidatos ocupam metade da linha cada; brancos, nulos e abstenção dividem a segunda linha. */
   .legenda {
     margin: 0; padding: 0; list-style: none;
-    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px 12px;
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px;
   }
-  .legenda li {
-    grid-column: span 2; min-width: 0; font-size: 0.76rem;
-    display: grid; grid-template-columns: 10px minmax(0, 1fr); column-gap: 6px; align-items: center;
-  }
-  .legenda li:nth-child(-n+2) { grid-column: span 3; }
-  .legenda i { width: 10px; height: 10px; border-radius: 2px; }
+  .legenda li { min-width: 0; font-size: 0.76rem; display: grid; gap: 1px; }
   .legenda .leg-nome { color: var(--muted); overflow-wrap: anywhere; line-height: 1.2; }
   .legenda strong {
-    grid-column: 2; font-family: var(--font-display); font-weight: 600; font-size: 1.1rem;
+    font-family: var(--font-display); font-weight: 600; font-size: 1.1rem;
     line-height: 1.1; font-variant-numeric: tabular-nums;
   }
-  .seg-a { background: var(--cor-a, var(--azul)); }
-  .seg-b { background: var(--cor-b, var(--vermelho)); }
-  .seg-brancos { background: var(--branco-voto); }
-  .seg-nulos { background: var(--nulo-voto); }
-  .seg-abstencao { background: var(--abstencao); outline: 1px solid var(--line); outline-offset: -1px; }
   .carimbo { margin: -4px 0 0; font-size: 0.72rem; color: var(--muted); }
 
   .compartilhar {
@@ -267,7 +248,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .status::before { animation: none !important; }
-    .barra span, .pilha span, .anel-valor { transition: none; }
+    .barra span, .anel-valor { transition: none; }
   }
 </style>
 </head>
@@ -282,7 +263,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.5.1</span>
+      <span class="versao" id="versao">v1.5.2</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -362,19 +343,11 @@
     <p class="decidido" data-ref="decidido" role="status" hidden></p>
 
     <figure class="eleitorado">
-      <figcaption>Eleitorado das seções apuradas <span data-ref="comparecimento">Comparecimento —</span></figcaption>
-      <div class="pilha" data-ref="pilha" role="img" aria-label="Composição do eleitorado das seções apuradas">
-        <span class="seg-a" data-seg="a"></span>
-        <span class="seg-b" data-seg="b"></span>
-        <span class="seg-brancos" data-seg="brancos"></span>
-        <span class="seg-nulos" data-seg="nulos"></span>
-      </div>
+      <figcaption>Brancos, nulos e abstenção</figcaption>
       <ul class="legenda">
-        <li><i class="seg-a"></i><span class="leg-nome" data-leg-nome="a">—</span><strong data-leg="a">—</strong></li>
-        <li><i class="seg-b"></i><span class="leg-nome" data-leg-nome="b">—</span><strong data-leg="b">—</strong></li>
-        <li><i class="seg-brancos"></i><span class="leg-nome">Brancos</span><strong data-leg="brancos">—</strong></li>
-        <li><i class="seg-nulos"></i><span class="leg-nome">Nulos</span><strong data-leg="nulos">—</strong></li>
-        <li><i class="seg-abstencao"></i><span class="leg-nome">Abstenção</span><strong data-leg="abstencao">—</strong></li>
+        <li><span class="leg-nome">Brancos</span><strong data-leg="brancos">—</strong></li>
+        <li><span class="leg-nome">Nulos</span><strong data-leg="nulos">—</strong></li>
+        <li><span class="leg-nome">Abstenção</span><strong data-leg="abstencao">—</strong></li>
       </ul>
     </figure>
     <p class="carimbo" data-ref="atualizado">Sem dados ainda.</p>
@@ -399,7 +372,6 @@
   const TEXTO_AGUARDANDO = "Aguardando";
   const TIMEOUT_MS = 8000;
   const FALHAS_PARA_AVISO = 2;
-  const ROTULOS_ELEITORADO = { brancos: "Brancos", nulos: "Nulos", abstencao: "Abstenção" };
   // Antes deste horário o TSE ainda não publica os arquivos, então falha de leitura não é problema de conexão.
   const INICIO_APURACAO = Date.parse("2026-10-25T17:00:00-03:00");
   const MS_POR_SEGUNDO = 1000;
@@ -537,7 +509,6 @@
       urnasPct: numeroTse(secoes.pstn ?? secoes.pst),
       secoesTotalizadas: numeroTse(secoes.st),
       secoesTotal: numeroTse(secoes.ts),
-      comparecimentoPct: numeroTse(eleitorado.pcn ?? eleitorado.pc),
       comparecimento: numeroTse(eleitorado.c),
       abstencao: numeroTse(eleitorado.a),
       brancos: numeroTse(votos.vb),
@@ -618,10 +589,8 @@
       urnasPct: ref("urnasPct"), urnasQtd: ref("urnasQtd"), anel: ref("anel"),
       barra: ref("barra"), barraA: ref("barraA"), barraB: ref("barraB"),
       diferenca: ref("diferenca"), decidido: ref("decidido"),
-      comparecimento: ref("comparecimento"), pilha: ref("pilha"), atualizado: ref("atualizado"),
-      segmentos: Object.fromEntries([...raiz.querySelectorAll("[data-seg]")].map((n) => [n.dataset.seg, n])),
-      legendas: Object.fromEntries([...raiz.querySelectorAll("[data-leg]")].map((n) => [n.dataset.leg, n])),
-      nomesLegenda: Object.fromEntries([...raiz.querySelectorAll("[data-leg-nome]")].map((n) => [n.dataset.legNome, n]))
+      atualizado: ref("atualizado"),
+      legendas: Object.fromEntries([...raiz.querySelectorAll("[data-leg]")].map((n) => [n.dataset.leg, n]))
     };
   }
 
@@ -681,35 +650,24 @@
     );
   }
 
+  function percentual(parte, total) {
+    return total > 0 ? (parte / total) * 100 : null;
+  }
+
   /**
-   * Barra empilhada do eleitorado das seções já apuradas: votos de cada candidato, brancos, nulos e abstenção.
-   * A base é comparecimento + abstenção, que corresponde ao eleitorado das seções totalizadas.
+   * Brancos e nulos sobre quem votou e abstenção sobre o eleitorado das seções apuradas,
+   * do mesmo jeito que o TSE e a imprensa divulgam, para os números baterem com os da TV.
    */
   function renderizarEleitorado(painel, resultado) {
-    const [a, b] = resultado.candidatos;
-    painel.nomesLegenda.a.textContent = a ? a.nome : "—";
-    painel.nomesLegenda.b.textContent = b ? b.nome : "—";
-    const base = resultado.comparecimento + resultado.abstencao;
-    const fatias = {
-      a: a ? a.votos : 0,
-      b: b ? b.votos : 0,
-      brancos: resultado.brancos,
-      nulos: resultado.nulos,
-      abstencao: resultado.abstencao
+    const eleitorado = resultado.comparecimento + resultado.abstencao;
+    const percentuais = {
+      brancos: percentual(resultado.brancos, resultado.comparecimento),
+      nulos: percentual(resultado.nulos, resultado.comparecimento),
+      abstencao: percentual(resultado.abstencao, eleitorado)
     };
-    const partes = [];
-    for (const [chave, valor] of Object.entries(fatias)) {
-      const pct = base > 0 ? (valor / base) * 100 : 0;
-      if (painel.segmentos[chave]) {
-        painel.segmentos[chave].style.width = `${pct}%`;
-      }
-      painel.legendas[chave].textContent = base > 0 ? `${fmtPctCurto.format(pct)}%` : "—";
-      partes.push(`${painel.nomesLegenda[chave]?.textContent || ROTULOS_ELEITORADO[chave]} ${fmtPctCurto.format(pct)}%`);
+    for (const [chave, pct] of Object.entries(percentuais)) {
+      painel.legendas[chave].textContent = pct === null ? "—" : `${fmtPctCurto.format(pct)}%`;
     }
-    painel.comparecimento.textContent = base > 0
-      ? `Comparecimento ${fmtPctCurto.format(resultado.comparecimentoPct)}%`
-      : "Comparecimento —";
-    painel.pilha.setAttribute("aria-label", base > 0 ? partes.join(", ") : "Sem seções apuradas");
   }
 
   function renderizarDecisao(painel, resultado) {
@@ -932,7 +890,7 @@
     return {
       candidatos: disputa.candidatosIniciais.map((c, i) => ({ ...c, votos: 0, pct: 0, eleito: false, seq: i + 1 })),
       votosValidos: 0, urnasPct: 0, secoesTotalizadas: 0, secoesTotal: 0,
-      comparecimentoPct: 0, comparecimento: 0, abstencao: 0, brancos: 0, nulos: 0,
+      comparecimento: 0, abstencao: 0, brancos: 0, nulos: 0,
       eleitoresRestantes: null, disputaDireta: true, atualizadoEm: "", finalizada: false
     };
   }
