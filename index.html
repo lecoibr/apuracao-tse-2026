@@ -203,6 +203,12 @@
     border-left: 4px solid var(--ok); font-size: 0.85rem; line-height: 1.35;
   }
   .decidido strong { display: block; color: var(--ok); font-weight: 600; }
+  .projecao {
+    margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--bg);
+    border-left: 4px solid var(--ouro); font-size: 0.85rem; line-height: 1.35;
+  }
+  .projecao strong { display: block; color: var(--ouro); font-weight: 600; }
+  .projecao small { display: block; margin-top: 2px; color: var(--muted); font-size: 0.72rem; }
 
   .eleitorado { margin: 0; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
   .eleitorado figcaption {
@@ -264,7 +270,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.5.3</span>
+      <span class="versao" id="versao">v1.6.0</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -342,6 +348,7 @@
     </div>
     <p class="diferenca" data-ref="diferenca">Aguardando o início da apuração.</p>
     <p class="decidido" data-ref="decidido" role="status" hidden></p>
+    <p class="projecao" data-ref="projecao" hidden></p>
 
     <figure class="eleitorado">
       <figcaption>Brancos, nulos e abstenção</figcaption>
@@ -371,6 +378,17 @@
   // Totalização concluída não muda mais na prática; basta conferir de vez em quando.
   const INTERVALO_FINALIZADA_MS = 30000;
   const TEXTO_AGUARDANDO = "Aguardando";
+  // Projeção: arquivos estaduais lidos com menos frequência, e só depois de uma parte relevante das urnas.
+  const INTERVALO_PROJECAO_MS = 60000;
+  const URNAS_MINIMAS_PROJECAO_PCT = 30;
+  // Abaixo desta margem projetada (em pontos percentuais) a projeção não aponta vencedor.
+  const MARGEM_MINIMA_PROJECAO_PP = 1;
+  const NOTA_PROJECAO_UF = "Calculada estado por estado, supondo que quem falta vote como os já apurados do mesmo estado (ou como no 1º turno, se o estado ainda não apurou). Pode mudar.";
+  const SITUACAO_PROJECAO = Object.freeze({ encerrada: "encerrada", semDados: "sem-dados", calculada: "calculada" });
+  const NOTA_PROJECAO_TENDENCIA = "Supondo que quem falta vote como os já apurados. Pode mudar.";
+  // Os 27 estados e o exterior ("zz"), como o TSE nomeia as pastas.
+  const UFS = ["ac", "al", "ap", "am", "ba", "ce", "df", "es", "go", "ma", "mt", "ms", "mg", "pa",
+    "pb", "pr", "pe", "pi", "rj", "rn", "rs", "ro", "rr", "sc", "sp", "se", "to", "zz"];
   const TIMEOUT_MS = 8000;
   const FALHAS_PARA_AVISO = 2;
   // Antes deste horário o TSE ainda não publica os arquivos, então falha de leitura não é problema de conexão.
@@ -397,6 +415,10 @@
       titulo: "Presidente da República",
       abrangencia: "Brasil",
       url: `${BASE_TSE}/6258/dados/br/br-c0001-e006258-u.json`,
+      // Só Presidente tem resultado por estado; o DF é uma unidade só e projeta pela tendência geral.
+      urlPorUf: (uf) => `${BASE_TSE}/6258/dados/${uf}/${uf}-c0001-e006258-u.json`,
+      // Resultado final do 1º turno, referência para estado que ainda não tem urna apurada no 2º.
+      urlPrimeiroTurnoPorUf: (uf) => `${BASE_TSE}/6257/dados/${uf}/${uf}-c0001-e006257-u.json`,
       ordem: ["22", "13"],
       candidatosIniciais: [
         { numero: "22", nome: "FLAVIO BOLSONARO", partido: "PL" },
@@ -429,6 +451,14 @@
     falhasParaIntervalo: 0,
     finalizadas: new Set(),
     ultimoResultado: new Map(),
+    projecoes: new Map(),
+    // Taxas do 1º turno por estado; o arquivo é definitivo, então basta baixar uma vez.
+    taxasPrimeiroTurno: null,
+    // Última leitura válida de cada estado, para uma falha isolada não travar a projeção.
+    parciaisUf: new Map(),
+    ultimaProjecaoEm: 0,
+    timerProjecao: null,
+    rodadaProjecao: 0,
     rodada: 0,
     paineis: new Map()
   };
@@ -589,7 +619,7 @@
       raiz, slots,
       urnasPct: ref("urnasPct"), urnasQtd: ref("urnasQtd"), anel: ref("anel"),
       barra: ref("barra"), barraA: ref("barraA"), barraB: ref("barraB"),
-      diferenca: ref("diferenca"), decidido: ref("decidido"),
+      diferenca: ref("diferenca"), decidido: ref("decidido"), projecao: ref("projecao"),
       atualizado: ref("atualizado"),
       legendas: Object.fromEntries([...raiz.querySelectorAll("[data-leg]")].map((n) => [n.dataset.leg, n]))
     };
@@ -685,6 +715,230 @@
     );
   }
 
+  /**
+   * Projeção para disputa sem divisão por estado (DF): supõe que quem falta vote como os já apurados,
+   * o que mantém a proporção atual dos votos válidos entre os dois candidatos.
+   */
+  function projetarPelaTendencia(resultado) {
+    const [a, b] = resultado.candidatos;
+    const votosDosDois = a && b ? a.votos + b.votos : 0;
+    if (!resultado.disputaDireta || votosDosDois === 0) {
+      return null;
+    }
+    return {
+      pctA: (a.votos / votosDosDois) * 100,
+      pctB: (b.votos / votosDosDois) * 100,
+      nota: NOTA_PROJECAO_TENDENCIA
+    };
+  }
+
+  function renderizarProjecao(painel, resultado, projecao) {
+    const [a, b] = resultado.candidatos;
+    painel.projecao.hidden = !projecao || !a || !b || !resultado.disputaDireta || resultado.finalizada
+      || resultado.urnasPct < URNAS_MINIMAS_PROJECAO_PCT;
+    if (painel.projecao.hidden) {
+      return;
+    }
+    const margem = Math.abs(projecao.pctA - projecao.pctB);
+    let conclusao = "Disputa apertada: a projeção ainda não aponta vencedor.";
+    if (margem >= MARGEM_MINIMA_PROJECAO_PP) {
+      conclusao = `A projeção indica vitória de ${(projecao.pctA > projecao.pctB ? a : b).nome}.`;
+    }
+    painel.projecao.textContent = "";
+    painel.projecao.append(
+      Object.assign(document.createElement("strong"), { textContent: "Projeção (estimativa)" }),
+      document.createTextNode(`${a.nome} ${fmtPct.format(projecao.pctA)}% x ${b.nome} ${fmtPct.format(projecao.pctB)}%. ${conclusao}`),
+      Object.assign(document.createElement("small"), {
+        textContent: projecao.nota
+      })
+    );
+  }
+
+  /** Lê o arquivo de um estado: votos dos dois candidatos, votos válidos, comparecimento e abstenção. */
+  function lerVotosUf(json, ordem) {
+    const cargo = json && Array.isArray(json.carg) ? json.carg[0] : null;
+    if (!cargo) {
+      throw new Error("Arquivo estadual do TSE sem dados de cargo");
+    }
+    const eleitorado = json.e || {};
+    const candidatos = extrairCandidatos(cargo);
+    const votosDe = (numero) => candidatos.find((c) => c.numero === numero)?.votos ?? 0;
+    return {
+      a: votosDe(ordem[0]),
+      b: votosDe(ordem[1]),
+      validos: numeroTse((json.v || {}).vv),
+      comparecimento: numeroTse(eleitorado.c),
+      abstencao: numeroTse(eleitorado.a)
+    };
+  }
+
+  /** Como lerVotosUf, somando os eleitores das seções que faltam apurar. */
+  function lerParcialUf(json, ordem, uf) {
+    const restantes = numeroTseOuNulo((json && json.e || {}).esnt);
+    if (restantes === null) {
+      throw new Error("Arquivo estadual do TSE sem eleitorado restante");
+    }
+    return { ...lerVotosUf(json, ordem), restantes, uf, secoesTotalizadas: numeroTse((json.s || {}).st) };
+  }
+
+  /**
+   * Taxas do 1º turno por estado. A divisão entre os dois candidatos considera só os votos dados a eles,
+   * o que supõe que os eleitores dos demais se dividam na mesma proporção.
+   * Só guarda o resultado quando todos os estados vieram, para tentar de novo os que falharam.
+   */
+  async function carregarTaxasPrimeiroTurno(disputa) {
+    if (estado.taxasPrimeiroTurno) {
+      return estado.taxasPrimeiroTurno;
+    }
+    const respostas = await Promise.allSettled(UFS.map((uf) => buscarJson(disputa.urlPrimeiroTurnoPorUf(uf))));
+    const taxas = new Map();
+    respostas.forEach((resposta, indice) => {
+      if (resposta.status !== "fulfilled") {
+        return;
+      }
+      try {
+        const taxasUf = taxasApuradas(lerVotosUf(resposta.value, disputa.ordem));
+        if (taxasUf) {
+          taxas.set(UFS[indice], taxasUf);
+        }
+      } catch (erro) {
+        console.warn(`1º turno indisponível para ${UFS[indice]}`, erro);
+      }
+    });
+    if (taxas.size === UFS.length) {
+      estado.taxasPrimeiroTurno = taxas;
+    }
+    return taxas;
+  }
+
+  /** Taxas observadas nas seções já apuradas, ou null se ainda não há votos suficientes para medir. */
+  function taxasApuradas(parcial) {
+    const eleitoresApurados = parcial.comparecimento + parcial.abstencao;
+    const votosDosDois = parcial.a + parcial.b;
+    if (eleitoresApurados === 0 || parcial.comparecimento === 0 || votosDosDois === 0) {
+      return null;
+    }
+    return {
+      comparecimento: parcial.comparecimento / eleitoresApurados,
+      validos: parcial.validos / parcial.comparecimento,
+      parteA: parcial.a / votosDosDois
+    };
+  }
+
+  /**
+   * Projeta o resultado final somando, estado por estado, os votos já apurados com os eleitores que faltam
+   * votando na mesma proporção, com o mesmo comparecimento e a mesma taxa de votos válidos já vistos ali.
+   * Estado ainda sem urnas apuradas usa as taxas dele no 1º turno e, na falta delas, as taxas do país.
+   * Isso corrige o viés de regiões que apuram antes, como o exterior, que costuma chegar por último.
+   * Simplificação: os votos anulados em análise na Justiça não entram na conta.
+   */
+  function calcularProjecao(parciais, taxasPrimeiroTurno) {
+    const somar = (campo) => parciais.reduce((total, parcial) => total + parcial[campo], 0);
+    const taxasPais = taxasApuradas({
+      a: somar("a"), b: somar("b"), validos: somar("validos"),
+      comparecimento: somar("comparecimento"), abstencao: somar("abstencao")
+    });
+    if (!taxasPais) {
+      return null;
+    }
+    let totalA = 0;
+    let totalB = 0;
+    for (const parcial of parciais) {
+      const taxas = taxasApuradas(parcial) ?? taxasPrimeiroTurno.get(parcial.uf) ?? taxasPais;
+      const novosValidos = parcial.restantes * taxas.comparecimento * taxas.validos;
+      totalA += parcial.a + novosValidos * taxas.parteA;
+      totalB += parcial.b + novosValidos * (1 - taxas.parteA);
+    }
+    const total = totalA + totalB;
+    return total > 0 ? { pctA: (totalA / total) * 100, pctB: (totalB / total) * 100, nota: NOTA_PROJECAO_UF } : null;
+  }
+
+  /** Guarda a leitura de cada estado que respondeu; os que falharam ficam com a leitura anterior. */
+  function guardarParciaisUf(respostas, ordem) {
+    respostas.forEach((resposta, indice) => {
+      const uf = UFS[indice];
+      if (resposta.status !== "fulfilled") {
+        return;
+      }
+      try {
+        const parcial = lerParcialUf(resposta.value, ordem, uf);
+        const anterior = estado.parciaisUf.get(uf);
+        // Cópia velha do CDN tem menos seções totalizadas; mantém a leitura mais recente.
+        if (!anterior || parcial.secoesTotalizadas >= anterior.secoesTotalizadas) {
+          estado.parciaisUf.set(uf, parcial);
+        }
+      } catch (erro) {
+        console.warn(`Arquivo de ${uf} ilegível nesta rodada`, erro);
+      }
+    });
+  }
+
+  /**
+   * Situação devolvida: "encerrada" (nada mais a projetar), "sem-dados" (ainda poucas urnas,
+   * tentar de novo logo) ou "calculada" (rodada feita, próxima no intervalo normal).
+   */
+  async function atualizarProjecao(rodada) {
+    const disputa = DISPUTAS.find((d) => d.urlPorUf);
+    const atual = disputa ? estado.ultimoResultado.get(disputa.id) : null;
+    if (!disputa || atual?.finalizada) {
+      return SITUACAO_PROJECAO.encerrada;
+    }
+    // Leitura fora do formato de 2º turno pode ser passageira: tenta de novo em vez de desistir.
+    if (!atual || !atual.disputaDireta || atual.urnasPct < URNAS_MINIMAS_PROJECAO_PCT) {
+      return SITUACAO_PROJECAO.semDados;
+    }
+    const [respostas, taxasPrimeiroTurno] = await Promise.all([
+      Promise.allSettled(UFS.map((uf) => buscarJson(disputa.urlPorUf(uf)))),
+      carregarTaxasPrimeiroTurno(disputa)
+    ]);
+    if (rodada !== estado.rodadaProjecao) {
+      return SITUACAO_PROJECAO.calculada;
+    }
+    estado.ultimaProjecaoEm = Date.now();
+    guardarParciaisUf(respostas, disputa.ordem);
+    // Sem nenhuma leitura de algum estado a soma ficaria torta; espera a próxima rodada.
+    if (estado.parciaisUf.size < UFS.length) {
+      console.warn("Projeção aguardando a primeira leitura de todos os estados");
+      return SITUACAO_PROJECAO.calculada;
+    }
+    const projecao = calcularProjecao(UFS.map((uf) => estado.parciaisUf.get(uf)), taxasPrimeiroTurno);
+    if (projecao) {
+      estado.projecoes.set(disputa.id, projecao);
+      renderizarProjecao(estado.paineis.get(disputa.id), estado.ultimoResultado.get(disputa.id), projecao);
+    }
+    return SITUACAO_PROJECAO.calculada;
+  }
+
+  async function cicloProjecao() {
+    clearTimeout(estado.timerProjecao);
+    const rodada = ++estado.rodadaProjecao;
+    let situacao = SITUACAO_PROJECAO.calculada;
+    try {
+      situacao = await atualizarProjecao(rodada);
+    } catch (erro) {
+      // Projeção é complemento: qualquer falha nela não pode afetar a apuração.
+      console.warn("Projeção indisponível nesta rodada", erro);
+    }
+    if (rodada !== estado.rodadaProjecao || document.hidden || situacao === SITUACAO_PROJECAO.encerrada) {
+      return;
+    }
+    // Sem dados ainda, confere de novo no ritmo da apuração; nada é baixado até haver urnas suficientes.
+    const espera = situacao === SITUACAO_PROJECAO.semDados ? INTERVALO_MS : INTERVALO_PROJECAO_MS;
+    clearTimeout(estado.timerProjecao);
+    estado.timerProjecao = setTimeout(cicloProjecao, espera);
+  }
+
+  /** Ao voltar para a aba, respeita o intervalo desde a última rodada em vez de baixar tudo de novo na hora. */
+  function retomarProjecao() {
+    const espera = estado.ultimaProjecaoEm + INTERVALO_PROJECAO_MS - Date.now();
+    if (espera <= 0) {
+      cicloProjecao();
+      return;
+    }
+    clearTimeout(estado.timerProjecao);
+    estado.timerProjecao = setTimeout(cicloProjecao, espera);
+  }
+
   function renderizarDisputa(disputa, resultado) {
     const painel = estado.paineis.get(disputa.id);
     painel.urnasPct.textContent = `${fmtPct.format(resultado.urnasPct)}%`;
@@ -695,6 +949,8 @@
     renderizarCandidatos(painel, resultado);
     renderizarBarra(painel, resultado);
     renderizarDecisao(painel, resultado);
+    renderizarProjecao(painel, resultado,
+      disputa.urlPorUf ? estado.projecoes.get(disputa.id) : projetarPelaTendencia(resultado));
     renderizarEleitorado(painel, resultado);
     const situacao = resultado.finalizada ? " · totalização concluída" : "";
     painel.atualizado.textContent = resultado.atualizadoEm
@@ -925,12 +1181,15 @@
       if (!document.hidden) {
         manterTelaLigada();
         ciclo();
+        retomarProjecao();
       } else {
         clearTimeout(estado.timer);
+        clearTimeout(estado.timerProjecao);
       }
     });
     manterTelaLigada();
     ciclo();
+    cicloProjecao();
     // Sinal para o script de compatibilidade, no fim da página, de que a apuração iniciou neste navegador.
     document.documentElement.dataset.app = "pronto";
   }
