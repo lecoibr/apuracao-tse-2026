@@ -282,7 +282,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.5.0</span>
+      <span class="versao" id="versao">v1.5.1</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -719,14 +719,10 @@
     if (painel.decidido.hidden) {
       return;
     }
-    const [a, b] = resultado.candidatos;
-    const diferenca = Math.abs(a.votos - b.votos);
     painel.decidido.textContent = "";
     painel.decidido.append(
       Object.assign(document.createElement("strong"), { textContent: "Matematicamente decidido" }),
-      document.createTextNode(`${vencedor.nome} não pode mais ser alcançado(a): a diferença de `
-        + `${fmtInteiro.format(diferenca)} votos é maior que os ${fmtInteiro.format(resultado.eleitoresRestantes)} `
-        + "votos que ainda podem entrar (eleitores das seções que faltam e votos em análise na Justiça).")
+      document.createTextNode(`${vencedor.nome} não pode mais ser alcançado(a).`)
     );
   }
 
