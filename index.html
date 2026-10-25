@@ -276,7 +276,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.3.4</span>
+      <span class="versao" id="versao">v1.3.5</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -435,6 +435,7 @@
     falhasSeguidas: 0,
     timer: null,
     timerContagem: null,
+    urnasJaApuradas: false,
     rodada: 0,
     paineis: new Map()
   };
@@ -674,10 +675,14 @@
     el.aviso.hidden = false;
   }
 
-  /** Mantém a faixa de espera visível enquanto nenhuma urna tiver sido apurada. */
+  /**
+   * Mantém a faixa de espera visível enquanto nenhuma urna tiver sido apurada.
+   * Depois que alguma leitura mostrou urnas, a faixa não volta, mesmo que uma disputa falhe numa leitura seguinte.
+   */
   function atualizarEspera(algumaComUrnas) {
-    el.espera.hidden = algumaComUrnas;
-    if (!algumaComUrnas && Date.now() >= INICIO_APURACAO) {
+    estado.urnasJaApuradas = estado.urnasJaApuradas || algumaComUrnas;
+    el.espera.hidden = estado.urnasJaApuradas;
+    if (!estado.urnasJaApuradas && Date.now() >= INICIO_APURACAO) {
       el.esperaTexto.textContent = TEXTO_ESPERA_APOS_INICIO;
     }
   }
@@ -691,6 +696,7 @@
     const restanteMs = INICIO_APURACAO - Date.now();
     if (restanteMs <= 0) {
       el.contagem.textContent = "";
+      atualizarEspera(false);
       clearInterval(estado.timerContagem);
       return;
     }
@@ -730,7 +736,6 @@
       }
     }
 
-    atualizarEspera(algumaComUrnas);
     if (sucessos === 0) {
       if (Date.now() < INICIO_APURACAO + TOLERANCIA_INICIO_MS) {
         definirStatus("conectando", "Aguardando");
@@ -746,6 +751,8 @@
     }
     estado.falhasSeguidas = 0;
     el.aviso.hidden = true;
+    // Só decide sobre a faixa de espera com leitura válida; numa falha não dá para saber se já há urnas apuradas.
+    atualizarEspera(algumaComUrnas);
     marcarUltimaLeitura();
     if (sucessos === DISPUTAS.length && todasFinalizadas) {
       definirStatus("finalizada", "Finalizada");
