@@ -279,7 +279,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.11</span>
+      <span class="versao" id="versao">v1.6.12</span>
     </div>
   </div>
 </header>
@@ -809,8 +809,7 @@
     }
     painel.decidido.textContent = "";
     painel.decidido.append(
-      Object.assign(document.createElement("strong"), { textContent: `${vencedor.nome} eleito(a)` }),
-      document.createTextNode("Matematicamente decidido: não pode mais ser alcançado(a).")
+      Object.assign(document.createElement("strong"), { textContent: `${vencedor.nome} eleito(a)` })
     );
   }
 
