@@ -205,8 +205,6 @@
     margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--bg);
     border-left: 4px solid var(--ouro); font-size: 0.85rem; line-height: 1.35;
   }
-  .projecao strong { display: block; color: var(--ouro); font-weight: 600; }
-  .projecao small { display: block; margin-top: 2px; color: var(--muted); font-size: 0.72rem; }
   /* Selo preso ao anel, por cima, para não empurrar o texto quando aparece ou some. */
   .anel-caixa { position: relative; display: block; flex-shrink: 0; width: 46px; height: 46px; }
   .novo {
@@ -273,7 +271,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.6</span>
+      <span class="versao" id="versao">v1.6.7</span>
     </div>
   </div>
 </header>
@@ -386,9 +384,7 @@
   const URNAS_MINIMAS_PROJECAO_PCT = 30;
   // Abaixo desta margem projetada (em pontos percentuais) a projeção não aponta vencedor.
   const MARGEM_MINIMA_PROJECAO_PP = 1;
-  const NOTA_PROJECAO_UF = "Calculada estado por estado, supondo que quem falta vote como os já apurados do mesmo estado (ou como no 1º turno, se o estado ainda não apurou). Pode mudar.";
   const SITUACAO_PROJECAO = Object.freeze({ encerrada: "encerrada", semDados: "sem-dados", calculada: "calculada" });
-  const NOTA_PROJECAO_TENDENCIA = "Supondo que quem falta vote como os já apurados. Pode mudar.";
   // Os 27 estados e o exterior ("zz"), como o TSE nomeia as pastas.
   const UFS = ["ac", "al", "ap", "am", "ba", "ce", "df", "es", "go", "ma", "mt", "ms", "mg", "pa",
     "pb", "pr", "pe", "pi", "rj", "rn", "rs", "ro", "rr", "sc", "sp", "se", "to", "zz"];
@@ -738,8 +734,7 @@
     }
     return {
       pctA: (a.votos / votosDosDois) * 100,
-      pctB: (b.votos / votosDosDois) * 100,
-      nota: NOTA_PROJECAO_TENDENCIA
+      pctB: (b.votos / votosDosDois) * 100
     };
   }
 
@@ -755,14 +750,7 @@
     if (margem >= MARGEM_MINIMA_PROJECAO_PP) {
       conclusao = `A projeção indica vitória de ${(projecao.pctA > projecao.pctB ? a : b).nome}.`;
     }
-    painel.projecao.textContent = "";
-    painel.projecao.append(
-      Object.assign(document.createElement("strong"), { textContent: "Projeção (estimativa)" }),
-      document.createTextNode(`${a.nome} ${fmtPct.format(projecao.pctA)}% x ${b.nome} ${fmtPct.format(projecao.pctB)}%. ${conclusao}`),
-      Object.assign(document.createElement("small"), {
-        textContent: projecao.nota
-      })
-    );
+    painel.projecao.textContent = conclusao;
   }
 
   /** Lê o arquivo de um estado: votos dos dois candidatos, votos válidos, comparecimento e abstenção. */
@@ -861,7 +849,7 @@
       totalB += parcial.b + novosValidos * (1 - taxas.parteA);
     }
     const total = totalA + totalB;
-    return total > 0 ? { pctA: (totalA / total) * 100, pctB: (totalB / total) * 100, nota: NOTA_PROJECAO_UF } : null;
+    return total > 0 ? { pctA: (totalA / total) * 100, pctB: (totalB / total) * 100 } : null;
   }
 
   /** Guarda a leitura de cada estado que respondeu; os que falharam ficam com a leitura anterior. */
