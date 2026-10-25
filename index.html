@@ -279,7 +279,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.9</span>
+      <span class="versao" id="versao">v1.6.10</span>
     </div>
   </div>
 </header>
@@ -830,8 +830,9 @@
 
   function renderizarProjecao(painel, resultado, projecao) {
     const [a, b] = resultado.candidatos;
+    // Com o resultado já decidido na conta, a projeção não acrescenta nada.
     painel.projecao.hidden = !projecao || !a || !b || !resultado.disputaDireta || resultado.finalizada
-      || resultado.urnasPct < URNAS_MINIMAS_PROJECAO_PCT;
+      || resultado.urnasPct < URNAS_MINIMAS_PROJECAO_PCT || vencedorMatematico(resultado) !== null;
     if (painel.projecao.hidden) {
       return;
     }
