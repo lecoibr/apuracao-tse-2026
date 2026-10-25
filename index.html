@@ -139,7 +139,7 @@
     display: flex; align-items: center; gap: 12px;
     background: var(--bg); border-radius: 10px; padding: 8px 12px;
   }
-  .anel { width: 46px; height: 46px; flex-shrink: 0; transform: rotate(-90deg); }
+  .anel { display: block; width: 46px; height: 46px; transform: rotate(-90deg); }
   .anel circle { fill: none; stroke-width: 7; }
   .anel-fundo { stroke: var(--line); }
   .anel-valor { stroke: var(--ouro); transition: stroke-dasharray 0.6s ease; }
@@ -207,6 +207,13 @@
   }
   .projecao strong { display: block; color: var(--ouro); font-weight: 600; }
   .projecao small { display: block; margin-top: 2px; color: var(--muted); font-size: 0.72rem; }
+  /* Selo preso ao anel, por cima, para não empurrar o texto quando aparece ou some. */
+  .anel-caixa { position: relative; display: block; flex-shrink: 0; width: 46px; height: 46px; }
+  .novo {
+    position: absolute; top: -5px; right: -7px; width: 22px; height: 22px; border-radius: 50%;
+    border: 2px solid var(--bg); display: grid; place-items: center; background: var(--ok); color: var(--surface);
+  }
+  .novo svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 
   .eleitorado { margin: 0; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
   .eleitorado figcaption {
@@ -266,7 +273,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.5</span>
+      <span class="versao" id="versao">v1.6.6</span>
     </div>
   </div>
 </header>
@@ -303,10 +310,15 @@
       <h2 data-ref="titulo"></h2>
     </header>
     <div class="urnas">
-      <svg class="anel" viewBox="0 0 52 52" aria-hidden="true">
-        <circle class="anel-fundo" cx="26" cy="26" r="21"></circle>
-        <circle class="anel-valor" data-ref="anel" cx="26" cy="26" r="21" pathLength="100" stroke-dasharray="0 100"></circle>
-      </svg>
+      <span class="anel-caixa">
+        <svg class="anel" viewBox="0 0 52 52" aria-hidden="true">
+          <circle class="anel-fundo" cx="26" cy="26" r="21"></circle>
+          <circle class="anel-valor" data-ref="anel" cx="26" cy="26" r="21" pathLength="100" stroke-dasharray="0 100"></circle>
+        </svg>
+        <span class="novo" data-ref="novo" role="img" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg>
+        </span>
+      </span>
       <div class="urnas-texto">
         <p><strong data-ref="urnasPct">0,00%</strong> <span>das urnas apuradas</span></p>
         <small data-ref="urnasQtd"></small>
@@ -392,6 +404,10 @@
   const MINUTOS_TOLERANCIA_INICIO = 15;
   const TOLERANCIA_INICIO_MS = MINUTOS_TOLERANCIA_INICIO * SEGUNDOS_POR_MINUTO * MS_POR_SEGUNDO;
   const SEGUNDOS_POR_HORA = 3600;
+  // Tempo que o símbolo de números novos fica na tela depois de cada mudança.
+  const TEMPO_SIMBOLO_NOVO_MS = 20000;
+  const DURACAO_DESTAQUE_MS = 600;
+  const MENOS_MOVIMENTO = matchMedia("(prefers-reduced-motion: reduce)");
   const TEXTO_PAUSA = "A apuração está parada até as 19h (horário de Brasília). Os números abaixo são parciais.";
   const TEXTO_ESPERA_APOS_INICIO = "A apuração começou às 17h (horário de Brasília). "
     + "Os números aparecem assim que o TSE divulgar as primeiras urnas apuradas.";
@@ -541,6 +557,7 @@
       eleitoresRestantes: contarEleitoresRestantes(eleitorado, votos),
       disputaDireta: todosCandidatos.length === 2,
       atualizadoEm: [json.dg, json.hg].filter(Boolean).join(" "),
+      horaGeracao: json.hg || "",
       finalizada: json.tf === "s"
     };
   }
@@ -614,7 +631,7 @@
       urnasPct: ref("urnasPct"), urnasQtd: ref("urnasQtd"), anel: ref("anel"),
       barra: ref("barra"), barraA: ref("barraA"), barraB: ref("barraB"),
       diferenca: ref("diferenca"), decidido: ref("decidido"), projecao: ref("projecao"),
-      atualizado: ref("atualizado"),
+      atualizado: ref("atualizado"), novo: ref("novo"), timerNovo: null,
       legendas: Object.fromEntries([...raiz.querySelectorAll("[data-leg]")].map((n) => [n.dataset.leg, n]))
     };
   }
@@ -933,6 +950,39 @@
     estado.timerProjecao = setTimeout(cicloProjecao, espera);
   }
 
+  /** Assinatura dos números exibidos, para saber se uma leitura trouxe algo diferente da anterior. */
+  function assinaturaNumeros(resultado) {
+    return [resultado.secoesTotalizadas, resultado.brancos, resultado.nulos, resultado.abstencao,
+      ...resultado.candidatos.map((c) => `${c.numero}:${c.votos}`)].join("|");
+  }
+
+  /** A maioria das consultas de 5 s não traz nada novo; só conta como novidade quando algum número muda. */
+  function numerosMudaram(anterior, atual) {
+    return Boolean(anterior) && anterior !== atual && assinaturaNumeros(anterior) !== assinaturaNumeros(atual);
+  }
+
+  /** Mostra o símbolo de números novos no painel por alguns segundos, com um destaque único ao aparecer. */
+  function sinalizarNumerosNovos(painel, hora) {
+    const rotulo = hora ? `Números novos do TSE às ${hora}` : "Números novos do TSE";
+    painel.novo.setAttribute("aria-label", rotulo);
+    painel.novo.title = rotulo;
+    painel.novo.hidden = false;
+    destacarUmaVez(painel.novo);
+    clearTimeout(painel.timerNovo);
+    painel.timerNovo = setTimeout(() => {
+      painel.novo.hidden = true;
+    }, TEMPO_SIMBOLO_NOVO_MS);
+  }
+
+  /** Pulso curto ao aparecer, sem animação contínua e respeitando quem prefere menos movimento. */
+  function destacarUmaVez(elemento) {
+    if (typeof elemento.animate !== "function" || MENOS_MOVIMENTO.matches) {
+      return;
+    }
+    elemento.animate([{ transform: "scale(1.5)" }, { transform: "scale(1)" }],
+      { duration: DURACAO_DESTAQUE_MS, easing: "ease-out" });
+  }
+
   function renderizarDisputa(disputa, resultado) {
     const painel = estado.paineis.get(disputa.id);
     painel.urnasPct.textContent = `${fmtPct.format(resultado.urnasPct)}%`;
@@ -1036,6 +1086,9 @@
     const anterior = estado.ultimoResultado.get(disputa.id);
     const exibido = anterior && resultado.secoesTotalizadas < anterior.secoesTotalizadas ? anterior : resultado;
     estado.ultimoResultado.set(disputa.id, exibido);
+    if (numerosMudaram(anterior, exibido)) {
+      sinalizarNumerosNovos(estado.paineis.get(disputa.id), exibido.horaGeracao);
+    }
     if (exibido.finalizada) {
       estado.finalizadas.add(disputa.id);
     }
@@ -1155,7 +1208,8 @@
       candidatos: disputa.candidatosIniciais.map((c, i) => ({ ...c, votos: 0, pct: 0, eleito: false, seq: i + 1 })),
       votosValidos: 0, urnasPct: 0, secoesTotalizadas: 0, secoesTotal: 0,
       comparecimento: 0, abstencao: 0, brancos: 0, nulos: 0,
-      eleitoresRestantes: null, disputaDireta: true, atualizadoEm: "", finalizada: false
+      eleitoresRestantes: null, disputaDireta: true, atualizadoEm: "", horaGeracao: "",
+      finalizada: false
     };
   }
 
