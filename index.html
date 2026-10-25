@@ -276,7 +276,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.3.1</span>
+      <span class="versao" id="versao">v1.3.2</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -387,6 +387,9 @@
   const INICIO_APURACAO = Date.parse("2026-10-25T17:00:00-03:00");
   const MS_POR_SEGUNDO = 1000;
   const SEGUNDOS_POR_MINUTO = 60;
+  // Margem para o TSE começar a publicar depois das 17h sem a página acusar falha de internet.
+  const MINUTOS_TOLERANCIA_INICIO = 15;
+  const TOLERANCIA_INICIO_MS = MINUTOS_TOLERANCIA_INICIO * SEGUNDOS_POR_MINUTO * MS_POR_SEGUNDO;
   const SEGUNDOS_POR_HORA = 3600;
   const TEXTO_ESPERA_APOS_INICIO = "A apuração começou às 17h (horário de Brasília). "
     + "Os números aparecem assim que o TSE divulgar as primeiras urnas apuradas.";
@@ -729,7 +732,7 @@
 
     atualizarEspera(algumaComUrnas);
     if (sucessos === 0) {
-      if (Date.now() < INICIO_APURACAO) {
+      if (Date.now() < INICIO_APURACAO + TOLERANCIA_INICIO_MS) {
         definirStatus("conectando", "Aguardando");
         return;
       }
