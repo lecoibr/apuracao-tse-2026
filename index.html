@@ -279,7 +279,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.6.10</span>
+      <span class="versao" id="versao">v1.6.11</span>
     </div>
   </div>
 </header>
@@ -732,6 +732,8 @@
 
   function renderizarCandidatos(painel, resultado) {
     const lider = indiceLider(resultado.candidatos[0], resultado.candidatos[1]);
+    // Quem já não pode ser alcançado conta como eleito antes mesmo da totalização oficial.
+    const vencedor = vencedorMatematico(resultado);
     for (const [i, slot] of painel.slots.entries()) {
       const cand = resultado.candidatos[i];
       if (!cand) {
@@ -745,7 +747,7 @@
       slot.partido.textContent = cand.partido;
       slot.pct.textContent = `${fmtPct.format(cand.pct)}%`;
       slot.votos.textContent = `${fmtInteiro.format(cand.votos)} votos`;
-      slot.selo.hidden = !cand.eleito;
+      slot.selo.hidden = !cand.eleito && cand !== vencedor;
       painel.raiz.style.setProperty(i === 0 ? "--cor-a" : "--cor-b", `var(--${cor})`);
     }
   }
@@ -807,8 +809,8 @@
     }
     painel.decidido.textContent = "";
     painel.decidido.append(
-      Object.assign(document.createElement("strong"), { textContent: "Matematicamente decidido" }),
-      document.createTextNode(`${vencedor.nome} não pode mais ser alcançado(a).`)
+      Object.assign(document.createElement("strong"), { textContent: `${vencedor.nome} eleito(a)` }),
+      document.createTextNode("Matematicamente decidido: não pode mais ser alcançado(a).")
     );
   }
 
