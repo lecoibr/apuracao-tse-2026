@@ -200,6 +200,11 @@
   }
   .diferenca { margin: -6px 0 0; font-size: 0.85rem; text-align: center; color: var(--muted); }
   .diferenca strong { color: var(--ink); font-weight: 600; }
+  .decidido {
+    margin: 0; padding: 8px 12px; border-radius: 8px; background: var(--bg);
+    border-left: 4px solid var(--ok); font-size: 0.85rem; line-height: 1.35;
+  }
+  .decidido strong { display: block; color: var(--ok); font-weight: 600; }
 
   .eleitorado { margin: 0; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
   .eleitorado figcaption {
@@ -277,7 +282,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.4.4</span>
+      <span class="versao" id="versao">v1.5.0</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -354,6 +359,7 @@
       <i class="barra-meio" aria-hidden="true"></i>
     </div>
     <p class="diferenca" data-ref="diferenca">Aguardando o início da apuração.</p>
+    <p class="decidido" data-ref="decidido" role="status" hidden></p>
 
     <figure class="eleitorado">
       <figcaption>Eleitorado das seções apuradas <span data-ref="comparecimento">Comparecimento —</span></figcaption>
@@ -465,13 +471,18 @@
     contagem: document.getElementById("contagem")
   };
 
-  /** Converte números no formato do TSE ("47,03", "158745502") para Number; valor ausente ou inválido vira 0. */
-  function numeroTse(valor) {
+  /** Converte números no formato do TSE ("47,03", "158745502") para Number; valor ausente ou inválido vira null. */
+  function numeroTseOuNulo(valor) {
     if (valor === undefined || valor === null || valor === "") {
-      return 0;
+      return null;
     }
     const numero = Number(String(valor).replace(/\./g, "").replace(",", "."));
-    return Number.isFinite(numero) ? numero : 0;
+    return Number.isFinite(numero) ? numero : null;
+  }
+
+  /** Igual a numeroTseOuNulo, mas valor ausente ou inválido vira 0, para exibição. */
+  function numeroTse(valor) {
+    return numeroTseOuNulo(valor) ?? 0;
   }
 
   /** Percorre agremiações → partidos → candidatos do arquivo de resultado e devolve uma lista plana. */
@@ -516,7 +527,8 @@
     const eleitorado = json.e || {};
     const votos = json.v || {};
     const votosValidos = numeroTse(votos.vv);
-    const candidatos = ordenarCandidatos(extrairCandidatos(cargo), disputa.ordem).slice(0, 2)
+    const todosCandidatos = extrairCandidatos(cargo);
+    const candidatos = ordenarCandidatos(todosCandidatos, disputa.ordem).slice(0, 2)
       .map((c) => ({ ...c, pct: votosValidos > 0 ? (c.votos / votosValidos) * 100 : 0 }));
 
     return {
@@ -530,9 +542,45 @@
       abstencao: numeroTse(eleitorado.a),
       brancos: numeroTse(votos.vb),
       nulos: numeroTse(votos.tvn),
+      eleitoresRestantes: contarEleitoresRestantes(eleitorado, votos),
+      disputaDireta: todosCandidatos.length === 2,
       atualizadoEm: [json.dg, json.hg].filter(Boolean).join(" "),
       finalizada: json.tf === "s"
     };
+  }
+
+  /**
+   * Teto de votos que ainda podem entrar: eleitores das seções não totalizadas mais os votos anulados
+   * apurados em separado, que uma decisão judicial ainda pode validar.
+   * Devolve null quando o TSE não informa o campo ou o manda ilegível, para a página nunca declarar
+   * um resultado por falta de dado.
+   */
+  function contarEleitoresRestantes(eleitorado, votos) {
+    const eleitores = numeroTseOuNulo(eleitorado.esnt);
+    // Sem o campo, os anulados contam 0; com o campo presente e ilegível, não dá para garantir a conta.
+    const anulados = votos.van === undefined ? 0 : numeroTseOuNulo(votos.van);
+    if (eleitores === null || anulados === null || eleitores < 0 || anulados < 0) {
+      return null;
+    }
+    return eleitores + anulados;
+  }
+
+  /**
+   * Candidato que já não pode ser alcançado, ou null.
+   * A conta é a mais conservadora possível: supõe que todos os eleitores que faltam compareçam
+   * e votem no segundo colocado. Se nem assim a diferença cai, o resultado está decidido.
+   * Só vale para disputa direta entre dois candidatos, como no 2º turno.
+   */
+  function vencedorMatematico(resultado) {
+    const [a, b] = resultado.candidatos;
+    if (!resultado.disputaDireta || !a || !b || resultado.eleitoresRestantes === null) {
+      return null;
+    }
+    const diferenca = Math.abs(a.votos - b.votos);
+    if (diferenca <= resultado.eleitoresRestantes) {
+      return null;
+    }
+    return a.votos > b.votos ? a : b;
   }
 
   async function buscarJson(url) {
@@ -569,7 +617,7 @@
       raiz, slots,
       urnasPct: ref("urnasPct"), urnasQtd: ref("urnasQtd"), anel: ref("anel"),
       barra: ref("barra"), barraA: ref("barraA"), barraB: ref("barraB"),
-      diferenca: ref("diferenca"),
+      diferenca: ref("diferenca"), decidido: ref("decidido"),
       comparecimento: ref("comparecimento"), pilha: ref("pilha"), atualizado: ref("atualizado"),
       segmentos: Object.fromEntries([...raiz.querySelectorAll("[data-seg]")].map((n) => [n.dataset.seg, n])),
       legendas: Object.fromEntries([...raiz.querySelectorAll("[data-leg]")].map((n) => [n.dataset.leg, n])),
@@ -664,6 +712,24 @@
     painel.pilha.setAttribute("aria-label", base > 0 ? partes.join(", ") : "Sem seções apuradas");
   }
 
+  function renderizarDecisao(painel, resultado) {
+    const vencedor = vencedorMatematico(resultado);
+    // Com a totalização concluída o selo "Eleito(a)" já diz tudo.
+    painel.decidido.hidden = !vencedor || resultado.finalizada;
+    if (painel.decidido.hidden) {
+      return;
+    }
+    const [a, b] = resultado.candidatos;
+    const diferenca = Math.abs(a.votos - b.votos);
+    painel.decidido.textContent = "";
+    painel.decidido.append(
+      Object.assign(document.createElement("strong"), { textContent: "Matematicamente decidido" }),
+      document.createTextNode(`${vencedor.nome} não pode mais ser alcançado(a): a diferença de `
+        + `${fmtInteiro.format(diferenca)} votos é maior que os ${fmtInteiro.format(resultado.eleitoresRestantes)} `
+        + "votos que ainda podem entrar (eleitores das seções que faltam e votos em análise na Justiça).")
+    );
+  }
+
   function renderizarDisputa(disputa, resultado) {
     const painel = estado.paineis.get(disputa.id);
     painel.urnasPct.textContent = `${fmtPct.format(resultado.urnasPct)}%`;
@@ -673,6 +739,7 @@
     painel.anel.setAttribute("stroke-dasharray", `${Math.min(100, resultado.urnasPct).toFixed(2)} 100`);
     renderizarCandidatos(painel, resultado);
     renderizarBarra(painel, resultado);
+    renderizarDecisao(painel, resultado);
     renderizarEleitorado(painel, resultado);
     const situacao = resultado.finalizada ? " · totalização concluída" : "";
     painel.atualizado.textContent = resultado.atualizadoEm
@@ -870,7 +937,7 @@
       candidatos: disputa.candidatosIniciais.map((c, i) => ({ ...c, votos: 0, pct: 0, eleito: false, seq: i + 1 })),
       votosValidos: 0, urnasPct: 0, secoesTotalizadas: 0, secoesTotal: 0,
       comparecimentoPct: 0, comparecimento: 0, abstencao: 0, brancos: 0, nulos: 0,
-      atualizadoEm: "", finalizada: false
+      eleitoresRestantes: null, disputaDireta: true, atualizadoEm: "", finalizada: false
     };
   }
 
