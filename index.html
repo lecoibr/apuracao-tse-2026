@@ -1,4 +1,4 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Apuração 2º Turno 2026</title><meta name="description" content="Acompanhe ao vivo a apuração do 2º turno de 25/10/2026: Presidente e Governador do DF, com dados do TSE."><meta property="og:type" content="website"><meta property="og:url" content="https://lecoibr.github.io/apuracao-tse-2026/"><meta property="og:title" content="Apuração 2º turno ao vivo"><meta property="og:description" content="Presidente e Governador do DF, com dados do TSE atualizados a cada segundo.">
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style><title>Apuração 2º Turno 2026</title><meta name="description" content="Acompanhe ao vivo a apuração do 2º turno de 25/10/2026: Presidente e Governador do DF, com dados do TSE."><meta property="og:type" content="website"><meta property="og:url" content="https://lecoibr.github.io/apuracao-tse-2026/"><meta property="og:title" content="Apuração 2º turno ao vivo"><meta property="og:description" content="Presidente e Governador do DF, com dados do TSE atualizados a cada 2 segundos.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -273,11 +273,11 @@
     <div class="topo-texto">
       <p class="topo-autoria">Produzido por <strong>E.R.A.</strong></p>
       <h1>Apuração 2º turno</h1>
-      <p class="topo-sub">Dom., 25/10/2026 · <span class="ultima-leitura" id="ultima-leitura">atualiza a cada 1 s</span></p>
+      <p class="topo-sub">Dom., 25/10/2026 · <span class="ultima-leitura" id="ultima-leitura">atualiza a cada 2 s</span></p>
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.4.1</span>
+      <span class="versao" id="versao">v1.4.2</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -380,13 +380,13 @@
   "use strict";
 
   const BASE_TSE = "https://resultados.tse.jus.br/oficial/ele2026";
-  const INTERVALO_MS = 1000;
+  const INTERVALO_MS = 2000;
   // Com falhas seguidas a consulta espaça até este limite, para não insistir num servidor fora do ar
-  // nem ser bloqueado pelo TSE; volta a 1 s na primeira leitura que der certo.
+  // nem ser bloqueado pelo TSE; volta ao intervalo normal na primeira leitura que der certo.
   const INTERVALO_MAXIMO_FALHA_MS = 10000;
-  // Perto do início da apuração a primeira urna precisa aparecer logo, então o espaçamento fica curto.
+  // Perto do início da apuração a primeira urna precisa aparecer logo, então não há espaçamento extra.
   const INTERVALO_MAXIMO_ESPERA_MS = 2000;
-  // Com só uma disputa falhando, a outra continua viva; o espaçamento para em 2^2 = 4 s.
+  // Com só uma disputa falhando, a outra continua viva; o espaçamento para em 2^2 = 4 vezes o normal (8 s).
   const EXPOENTE_MAXIMO_FALHA_PARCIAL = 2;
   // Totalização concluída não muda mais na prática; basta conferir de vez em quando.
   const INTERVALO_FINALIZADA_MS = 30000;
@@ -771,7 +771,7 @@
       "Falha ao ler este painel no TSE agora; mostrando os últimos dados recebidos.";
   }
 
-  /** Intervalo até a próxima consulta: 1 s normalmente, mais espaçado com falhas seguidas ou após a totalização. */
+  /** Intervalo até a próxima consulta: 2 s normalmente, mais espaçado com falhas seguidas ou após a totalização. */
   function proximoIntervalo() {
     if (todasFinalizadas()) {
       return INTERVALO_FINALIZADA_MS;
