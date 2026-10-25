@@ -277,7 +277,7 @@
     </div>
     <div class="topo-estado">
       <span class="status" id="status" data-estado="conectando">Conectando</span>
-      <span class="versao" id="versao">v1.4.3</span>
+      <span class="versao" id="versao">v1.4.4</span>
       <span class="online" id="online" hidden><strong id="online-qtd">1</strong> on-line</span>
     </div>
   </div>
@@ -937,6 +937,8 @@
   const TOLERANCIA_RELOGIO_MS = 600000;
   const LIMITE_REGISTROS = 100000;
   const ID_VALIDO = /^[a-f0-9-]{16,64}$/;
+  // O contador só aparece a partir do início da apuração; antes disso a conexão já conta, mas fica oculta.
+  const INICIO_EXIBICAO = Date.parse("2026-10-25T17:00:00-03:00");
 
   const elOnline = document.getElementById("online");
   const elQtd = document.getElementById("online-qtd");
@@ -1018,7 +1020,11 @@
     exibir();
   }
 
-  function publicarPresenca(cliente) {
+  function atualizarVisibilidade() {
+    elOnline.hidden = !(cliente.connected && Date.now() >= INICIO_EXIBICAO);
+  }
+
+  function publicarPresenca() {
     if (cliente.connected) {
       cliente.publish(meuTopico, mensagemPresenca(), { qos: 1, retain: true });
     }
@@ -1038,20 +1044,22 @@
     vistos.clear();
     vistos.set(meuId, Date.now());
     cliente.subscribe(`${TOPICO_BASE}+`, { qos: 0 });
-    publicarPresenca(cliente);
+    publicarPresenca();
     exibir();
-    elOnline.hidden = false;
+    atualizarVisibilidade();
   });
   cliente.on("message", (topico, payload, pacote) => registrar(topico, payload, pacote.retain));
-  cliente.on("offline", () => {
-    elOnline.hidden = true;
-  });
+  cliente.on("offline", atualizarVisibilidade);
+  cliente.on("close", atualizarVisibilidade);
   cliente.on("error", (erro) => console.warn("Contador de pessoas on-line indisponível", erro));
 
-  setInterval(() => publicarPresenca(cliente), RENOVACAO_MS);
+  setInterval(publicarPresenca, RENOVACAO_MS);
+  // Libera o contador às 17h; a varredura periódica cobre o caso de o navegador atrasar este timer em segundo plano.
+  setTimeout(atualizarVisibilidade, Math.max(0, INICIO_EXIBICAO - Date.now()));
   setInterval(() => {
     vistos.set(meuId, Date.now());
     descartarAntigos();
+    atualizarVisibilidade();
   }, VARREDURA_MS);
 
   // Ao sair, apaga o próprio registro na hora; se não der tempo, o "last will" do broker faz isso.
@@ -1062,7 +1070,7 @@
   });
   globalThis.addEventListener("pageshow", (evento) => {
     if (evento.persisted) {
-      publicarPresenca(cliente);
+      publicarPresenca();
     }
   });
 })();
